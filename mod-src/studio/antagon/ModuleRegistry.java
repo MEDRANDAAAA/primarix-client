@@ -138,7 +138,8 @@ final class ModuleRegistry {
             return new String[][] {
                 {"size", "TAMAÑO", "range:50:200:5:%", "75%"},
                 {"style", "VISTA", "compacto,detallado", "compacto"},
-                {"label", "NOMBRE Y NIVEL", "on,off", "off"},
+                {"name", "NOMBRE", "on,off", "off"},
+                {"level", "NIVEL", "on,off", "off"},
                 {"bg", "FONDO", "on,off"},
                 {"bar", "BARRA DE COLOR", "on,off"}
             };

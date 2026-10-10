@@ -233,6 +233,12 @@ public class AntagonHud {
 
     private String opt(String mod, String key) {
         String property = mod + "." + key;
+        if (mod.equals("effects")
+                && (key.equals("name") || key.equals("level"))
+                && !config.containsKey(property)
+                && config.containsKey("effects.label")) {
+            return config.getProperty("effects.label");
+        }
         return config.getProperty(property, defaultValue(property));
     }
 
@@ -3398,8 +3404,9 @@ public class AntagonHud {
 
         int rows = Math.min(6, effects.size());
         boolean compact = opt("effects", "style").equals("compacto");
-        boolean labels = flag("effects", "label");
-        float w = compact ? (labels ? 148 : 62) : 184;
+        boolean showName = flag("effects", "name"), showLevel = flag("effects", "level");
+        boolean showLabels = showName || showLevel;
+        float w = compact ? (showLabels ? 148 : 62) : 184;
         float h = compact ? rows * 20 + 6 : 21 + rows * 16;
         place("effects", w, h, sw - w - 12, 64, sw, sh);
         try {
@@ -3417,16 +3424,19 @@ public class AntagonHud {
                         amplifier <= 5
                                 ? new String[] {"I", "II", "III", "IV", "V"}[amplifier - 1]
                                 : Integer.toString(amplifier);
+                String label =
+                        (showName ? potionName(effect) : "")
+                                + (showName && showLevel ? " " : "")
+                                + (showLevel ? level : "");
                 if (compact) {
                     int y = 3 + row * 20;
                     drawPotionIcon(potionIconIndex(effect), 4, y);
-                    if (labels)
-                        text(fit(potionName(effect) + " " + level, w - 58), 26, y + 4, WHITE);
+                    if (showLabels) text(fit(label, w - 58), 26, y + 4, WHITE);
                     String duration = potionDuration(effect);
                     text(duration, w - width(duration) - 4, y + 4, GRAY);
                 } else {
                     float y = 19 + row * 16;
-                    text(fit(potionName(effect) + " " + level, w - 54), 7, y, WHITE);
+                    if (showLabels) text(fit(label, w - 54), 7, y, WHITE);
                     text(potionDuration(effect), w - 45, y, GRAY);
                 }
                 row++;

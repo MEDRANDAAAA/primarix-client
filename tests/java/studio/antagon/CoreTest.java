@@ -68,10 +68,11 @@ public final class CoreTest {
         check(ModuleRegistry.defaultEnabled("effects"));
         check(!ModuleRegistry.defaultEnabled("damageindicator"));
         check(ModuleRegistry.options("armor").length == 0);
-        check(ModuleRegistry.options("effects").length == 5);
+        check(ModuleRegistry.options("effects").length == 6);
         check("75%".equals(ModuleRegistry.defaultValue("effects.size")));
         check("compacto".equals(ModuleRegistry.defaultValue("effects.style")));
-        check("off".equals(ModuleRegistry.defaultValue("effects.label")));
+        check("off".equals(ModuleRegistry.defaultValue("effects.name")));
+        check("off".equals(ModuleRegistry.defaultValue("effects.level")));
         check(ModuleRegistry.options("damageindicator").length == 5);
         check("32".equals(ModuleRegistry.defaultValue("damageindicator.range")));
         check("corazones".equals(ModuleRegistry.defaultValue("damageindicator.display")));
