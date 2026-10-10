@@ -4554,7 +4554,9 @@ public class AntagonHud {
                             waiting);
                 } else if (opts[k][2].startsWith("range:")) {
                     float[] r = range(opts[k]);
-                    slider(ry, (Spotify.number(v.replace("%", "")) - r[0]) / (r[1] - r[0]));
+                    String unit = opts[k][2].split(":", -1)[4];
+                    String value = unit.isEmpty() ? v : v.replace(unit, "");
+                    slider(ry, (Spotify.number(value) - r[0]) / (r[1] - r[0]));
                     text(v, x0 + PW - 16 - width(v), ry + 3, WHITE);
                 } else if (opts[k][2].equals("slider")) {
                     int vol = radioVolume;
@@ -5658,7 +5660,11 @@ public class AntagonHud {
                 damageIndicator(
                         player,
                         x,
-                        y + DamageIndicatorDisplay.heartAnchorY(height),
+                        y
+                                + DamageIndicatorDisplay.heartAnchorY(
+                                        height,
+                                        DamageIndicatorDisplay.verticalOffset(
+                                                opt("damageindicator", "offsetY"))),
                         z,
                         view,
                         distance);
@@ -5725,7 +5731,10 @@ public class AntagonHud {
         Object renderManager = call(mc, new String[] {"func_175598_ae", "getRenderManager"});
         float size = percent("damageindicator", "size");
         int count = heartCount(maximum, absorption);
-        float unit = 0.82f, step = 7.2f, width = heartWidth(count, unit, step);
+        float unit = 0.82f, step = 7.2f, rowStep = 11f;
+        float width = DamageIndicatorDisplay.heartWidth(count, unit, step);
+        float top = DamageIndicatorDisplay.heartStackTop(count, rowStep);
+        float height = DamageIndicatorDisplay.heartStackHeight(count, unit, rowStep);
         GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
         GL11.glPushMatrix();
         try {
@@ -5742,7 +5751,11 @@ public class AntagonHud {
             GL11.glDisable(GL11.GL_CULL_FACE);
             GL11.glDisable(GL11.GL_DEPTH_TEST);
             GL11.glDepthMask(false);
-            drawHealthHearts(-width / 2, 0, health, maximum, absorption, unit, step);
+            if (flag("damageindicator", "bg")) {
+                GL11.glDisable(GL11.GL_TEXTURE_2D);
+                rect(-width / 2 - 3, top - 2, width + 6, height + 4, 0x99000000);
+            }
+            drawHealthHearts(health, maximum, absorption, unit, step, rowStep);
         } finally {
             GL11.glPopMatrix();
             GL11.glPopAttrib();
@@ -5755,30 +5768,24 @@ public class AntagonHud {
         return healthCount + absorptionCount;
     }
 
-    private static float heartWidth(int count, float unit, float step) {
-        return (count - 1) * step + HEART_MASK[0].length() * unit;
-    }
-
     private void drawHealthHearts(
-            float left,
-            float top,
             float health,
             float maximum,
             float absorption,
             float unit,
-            float step) {
+            float step,
+            float rowStep) {
         int healthCount = Math.max(1, Math.min(20, (int) Math.ceil(maximum / 2f)));
         int count = heartCount(maximum, absorption);
-        float width = heartWidth(count, unit, step);
-        if (flag("damageindicator", "bg"))
-            rect(left - 3, top - 2, width + 6, HEART_MASK.length * unit + 4, 0x99000000);
         GL11.glDisable(GL11.GL_TEXTURE_2D);
         GL11.glBegin(GL11.GL_QUADS);
         for (int heart = 0; heart < count; heart++) {
+            float left = DamageIndicatorDisplay.heartX(heart, count, unit, step);
+            float top = DamageIndicatorDisplay.heartY(heart, rowStep);
             for (int row = 0; row < HEART_MASK.length; row++) {
                 for (int column = 0; column < HEART_MASK[row].length(); column++) {
                     if (HEART_MASK[row].charAt(column) != '1') continue;
-                    float x = left + heart * step + column * unit + unit * .65f;
+                    float x = left + column * unit + unit * .65f;
                     float y = top + row * unit + unit * .65f;
                     GL11.glColor4f(.04f, .04f, .04f, .95f);
                     heartQuad(x, y, unit);
@@ -5788,6 +5795,8 @@ public class AntagonHud {
         GL11.glEnd();
         GL11.glBegin(GL11.GL_QUADS);
         for (int heart = 0; heart < count; heart++) {
+            float left = DamageIndicatorDisplay.heartX(heart, count, unit, step);
+            float top = DamageIndicatorDisplay.heartY(heart, rowStep);
             boolean gold = heart >= healthCount;
             int heartIndex = gold ? heart - healthCount : heart;
             float points = (gold ? absorption : health) - heartIndex * 2f;
@@ -5808,7 +5817,7 @@ public class AntagonHud {
                             (color & 255) / 255f,
                             (color >>> 24) / 255f);
                     heartQuad(
-                            left + heart * step + column * unit,
+                            left + column * unit,
                             top + row * unit,
                             unit);
                 }

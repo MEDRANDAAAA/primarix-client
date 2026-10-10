@@ -78,9 +78,10 @@ public final class CoreTest {
         check("compacto".equals(ModuleRegistry.defaultValue("effects.style")));
         check("off".equals(ModuleRegistry.defaultValue("effects.name")));
         check("off".equals(ModuleRegistry.defaultValue("effects.level")));
-        check(ModuleRegistry.options("damageindicator").length == 5);
+        check(ModuleRegistry.options("damageindicator").length == 6);
         check("32".equals(ModuleRegistry.defaultValue("damageindicator.range")));
         check("corazones".equals(ModuleRegistry.defaultValue("damageindicator.display")));
+        check("0cm".equals(ModuleRegistry.defaultValue("damageindicator.offsetY")));
         check("on".equals(ModuleRegistry.defaultValue("damageindicator.absorption")));
         check("9.5/10".equals(DamageIndicatorDisplay.label("vida", 19, 20)));
         check("75%".equals(DamageIndicatorDisplay.label("porcentaje", 15, 20)));
@@ -89,8 +90,19 @@ public final class CoreTest {
         check(
                 DamageIndicatorDisplay.heartBillboardScale(2f)
                         == 2 * DamageIndicatorDisplay.heartBillboardScale(1f));
-        check(DamageIndicatorDisplay.heartAnchorY(1.8f) == 1.98f);
-        check(DamageIndicatorDisplay.heartAnchorY(1.8f) < 1.8f + 0.5f);
+        check(DamageIndicatorDisplay.heartAnchorY(1.8f, 0) == 1.98f);
+        check(DamageIndicatorDisplay.heartAnchorY(1.8f, 0.5f) == 2.48f);
+        check(DamageIndicatorDisplay.verticalOffset("25cm") == 0.25f);
+        check(DamageIndicatorDisplay.verticalOffset("-100cm") == -1f);
+        check(DamageIndicatorDisplay.verticalOffset("invalid") == 0);
+        check(DamageIndicatorDisplay.heartRows(20) == 2);
+        check(DamageIndicatorDisplay.heartRows(40) == 4);
+        check(DamageIndicatorDisplay.heartRows(0) == 0);
+        check(DamageIndicatorDisplay.heartX(0, 20, 1, 8) == -40.5f);
+        check(DamageIndicatorDisplay.heartX(10, 20, 1, 8) == -40.5f);
+        check(DamageIndicatorDisplay.heartY(10, 11) == -11f);
+        check(DamageIndicatorDisplay.heartStackTop(40, 11) == -33f);
+        check(DamageIndicatorDisplay.heartStackHeight(40, 1, 11) == 42f);
         check("off".equals(ModuleRegistry.defaultValue("chat.transparent")));
         check(MenuLayout.homeScale(854, 480) == 1f);
         check(MenuLayout.homeScale(1360, 719) == 1f);

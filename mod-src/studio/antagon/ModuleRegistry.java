@@ -148,6 +148,7 @@ final class ModuleRegistry {
                 SIZE,
                 {"range", "DISTANCIA", "8,16,24,32,48", "32"},
                 {"display", "VISTA", "corazones,vida,porcentaje", "corazones"},
+                {"offsetY", "ALTURA Y", "range:-100:100:5:cm", "0cm"},
                 {"absorption", "CORAZONES DE ABSORCIÓN", "on,off"},
                 {"bg", "FONDO", "on,off"}
             };
