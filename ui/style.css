@@ -12,6 +12,8 @@
   --muted: #c0aebd;
   --accent: #f49caf;
   --accent-foreground: #24141b;
+  --button-edge: color-mix(in srgb, var(--accent), var(--accent-foreground) 38%);
+  --button-lip: color-mix(in srgb, var(--accent), var(--accent-foreground) 24%);
   --red: var(--accent);
   --red-hover: color-mix(in srgb, var(--accent), white 18%);
   --ui: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
@@ -1857,25 +1859,31 @@ pre {
   white-space: nowrap;
 }
 button:not(.tab):not(.account) {
-  border: 1px solid var(--line);
+  border: 1px solid var(--button-edge);
   border-radius: 6px;
   background: var(--raised);
   color: var(--text);
-  box-shadow: 0 2px 0 rgb(0 0 0 / 62%);
+  box-shadow:
+    0 0 0 1px var(--button-edge),
+    0 3px 0 1px var(--button-lip);
   transition:
     background 0.15s,
     border-color 0.15s,
-    box-shadow 0.12s,
-    transform 0.12s;
+    box-shadow 0.15s cubic-bezier(0.2, 0.7, 0.3, 1),
+    transform 0.15s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 button:not(.tab):not(.account):hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent), var(--line) 35%);
-  transform: translate(-1px, -1px);
-  box-shadow: 0 4px 0 rgb(0 0 0 / 68%);
+  border-color: var(--button-edge);
+  transform: translateY(1px);
+  box-shadow:
+    0 0 0 1px var(--button-edge),
+    0 2px 0 1px var(--button-lip);
 }
 button:not(.tab):not(.account):active:not(:disabled) {
-  transform: translate(1px, 1px);
-  box-shadow: 0 0 0 rgb(0 0 0 / 62%);
+  transform: translateY(3px);
+  box-shadow:
+    0 0 0 1px var(--button-edge),
+    0 0 0 1px var(--button-lip);
 }
 .primary:hover:not(:disabled),
 .update:hover:not(:disabled),
@@ -1886,14 +1894,16 @@ button:not(.tab):not(.account):active:not(:disabled) {
 .secondary:active:not(:disabled),
 .danger:active:not(:disabled),
 .update:active:not(:disabled) {
-  transform: translate(1px, 1px);
-  box-shadow: 0 0 0 rgb(0 0 0 / 62%);
+  transform: translateY(3px);
+  box-shadow:
+    0 0 0 1px var(--button-edge),
+    0 0 0 1px var(--button-lip);
 }
 .primary:disabled,
 .secondary:disabled,
 .danger:disabled,
 .play:disabled {
-  box-shadow: 0 1px 0 rgb(0 0 0 / 42%);
+  box-shadow: 0 0 0 1px var(--button-edge);
 }
 .tab {
   border: 0;
@@ -1948,12 +1958,17 @@ button:not(.tab):not(.account).secondary {
 .segmented button.active:hover:not(:disabled) {
   color: var(--accent-foreground);
   background: color-mix(in srgb, var(--accent), white 14%);
-  box-shadow: 0 3px 0 rgb(0 0 0 / 62%);
+  transform: translateY(1px);
+  box-shadow:
+    0 0 0 1px var(--button-edge),
+    0 2px 0 1px var(--button-lip);
 }
 button:not(.tab):not(.account).danger {
   color: #fff;
   background: #8e171a;
   border-color: #c54449;
+  --button-edge: #c54449;
+  --button-lip: #570e11;
 }
 button:not(.tab):not(.account).danger:hover:not(:disabled) {
   background: #bc1b20;
@@ -1988,4 +2003,8 @@ button:not(.tab):not(.account).update:hover:not(:disabled) {
 button:not(.tab):not(.account).resourcepacks-drop:hover:not(:disabled),
 button:not(.tab):not(.account).resourcepacks-drop.dragging {
   background: color-mix(in srgb, var(--surface), var(--accent) 8%);
+  transform: translateY(1px);
+  box-shadow:
+    0 0 0 1px var(--button-edge),
+    0 2px 0 1px var(--button-lip) !important;
 }

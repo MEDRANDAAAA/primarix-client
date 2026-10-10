@@ -239,10 +239,28 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     assert.equal(await page.locator('#launch').evaluate((button) => getComputedStyle(button).color), 'rgb(36, 20, 27)');
     assert.notEqual(await page.locator('#launch').evaluate((button) => getComputedStyle(button).boxShadow), 'none');
     await page.locator('#launch').hover();
+    await page.waitForTimeout(180);
+    assert.equal(
+      await page.locator('#launch').evaluate((button) => getComputedStyle(button).transform),
+      'matrix(1, 0, 0, 1, 0, 1)',
+    );
     assert.notEqual(
       await page.locator('#launch').evaluate((button) => getComputedStyle(button).backgroundColor),
       'rgb(49, 130, 206)',
     );
+    const hoverShadow = await page.locator('#launch').evaluate((button) => getComputedStyle(button).boxShadow);
+    await page.mouse.down();
+    await page.waitForTimeout(180);
+    assert.equal(
+      await page.locator('#launch').evaluate((button) => getComputedStyle(button).transform),
+      'matrix(1, 0, 0, 1, 0, 3)',
+    );
+    assert.notEqual(
+      await page.locator('#launch').evaluate((button) => getComputedStyle(button).boxShadow),
+      hoverShadow,
+    );
+    await page.mouse.move(10, 70);
+    await page.mouse.up();
     await page.click('[data-view="mods"]');
     await page.waitForFunction(
       () =>
