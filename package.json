@@ -1,0 +1,82 @@
+{
+  "name": "primarix-client",
+  "productName": "Primarix Launcher",
+  "version": "0.1.39",
+  "description": "Launcher y cliente PvP de Minecraft 1.8.9 con HUD configurable.",
+  "main": "electron/main.cjs",
+  "author": "Annth",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "install:game": "node scripts/prepare.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "test:ui": "node scripts/test-ui.cjs",
+    "test:game": "node scripts/smoke-game.cjs",
+    "build:mod": "node scripts/build-mod.cjs",
+    "build:glass-pack": "node scripts/build-glass-pack.cjs",
+    "format": "prettier --write .",
+    "prepackage:mac": "npm run build:mod",
+    "package:mac": "electron-packager . --platform=darwin --arch=arm64 --out=release --overwrite --ignore=release --ignore=build --ignore=tests --ignore=docs --ignore=scripts --ignore=mod-src",
+    "prepackage:win": "npm run build:mod",
+    "package:win": "electron-packager . --platform=win32 --arch=x64 --out=release --overwrite --ignore=release --ignore=build --ignore=tests --ignore=docs --ignore=scripts --ignore=mod-src",
+    "prepackage:portable": "npm run build:mod && npm run build:glass-pack",
+    "package:portable": "electron-builder --win portable --x64",
+    "test:java": "node scripts/test-java.cjs",
+    "format:check": "prettier --check .",
+    "test:discord": "node scripts/test-discord.cjs",
+    "postpackage:mac": "node scripts/sign-mac.cjs && node scripts/copy-desktop-mac.cjs",
+    "test:call": "electron scripts/test-call.cjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "fflate": "^0.8.3",
+    "msmc": "5.0.5",
+    "node-unrar-js": "^2.0.2",
+    "yauzl": "^3.4.0"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "44.4.5",
+    "electron-builder": "^26.15.3",
+    "playwright": "1.58.2",
+    "prettier": "^3.6.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MEDRANDAAAA/primarix-client.git"
+  },
+  "build": {
+    "appId": "studio.primarix.client",
+    "productName": "Primarix Client",
+    "directories": {
+      "output": "release-primarix-portable"
+    },
+    "files": [
+      "electron/**/*",
+      "ui/**/*",
+      "assets/**/*",
+      {
+        "from": "assets/glassified",
+        "to": "assets/classified",
+        "filter": [
+          "**/*"
+        ]
+      },
+      "package.json",
+      "!assets/antagon-hud-*.jar",
+      "!assets/icon.icns",
+      "!assets/natives-arm64/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "Primarix-Client-Portable-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Primarix-Client-Portable-${version}.${ext}"
+    }
+  }
+}

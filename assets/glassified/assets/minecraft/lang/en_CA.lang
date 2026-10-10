@@ -1,0 +1,58 @@
+language.name=English
+language.region=Canada
+language.code=en_CA
+
+
+demo.help.movement=§7Use the %1$s, %2$s, %3$s, %4$s keys and the mouse to move around§r
+demo.help.movementShort=§7Move by pressing the %1$s, %2$s, %3$s, %4$s keys§r
+demo.help.movementMouse=§7Look around using the mouse§r
+demo.help.jump=§7Jump by pressing the %1$s key§r
+demo.help.inventory=§7Use the %1$s key to open your inventory§r
+demo.help.title=§fMinecraft Demo Mode§r
+demo.help.fullWrapped=§7This demo will last 5 ingame days (about 1 hour and 40 minutes of real time). Check the advancements for hints! Have fun!§r
+
+
+container.inventory=§7Inventory§r
+container.hopper=§7Item Hopper§r
+container.crafting=§7Crafting§r
+container.dispenser=§7Dispenser§r
+container.dropper=§7Dropper§r
+container.furnace=§7Furnace§r
+container.enchant=§7Enchant§r
+container.repair=§7Repair & Name§r
+container.creative=§7Item Selection§r
+container.brewing=§7Brewing Stand§r
+container.chest=§7Chest§r
+container.chestDouble=§7Large Chest§r
+container.enderchest=§7Ender Chest§r
+container.beacon=§7Beacon§r
+
+
+itemGroup.buildingBlocks=§7Building Blocks§r
+itemGroup.decorations=§7Decoration Blocks§r
+itemGroup.redstone=§7Redstone§r
+itemGroup.transportation=§7Transportation§r
+itemGroup.misc=§7Miscellaneous§r
+itemGroup.search=§7Search§r
+itemGroup.food=§7Foodstuffs§r
+itemGroup.tools=§7Tools§r
+itemGroup.combat=§7Combat§r
+itemGroup.brewing=§7Brewing§r
+itemGroup.materials=§7Materials§r
+itemGroup.inventory=§7Survival Inventory§r
+
+
+entity.MinecartHopper.name=§7Minecart with Hopper§r
+entity.MinecartChest.name=§7Minecart with Chest§r
+entity.Villager.name=§7Villager§r
+entity.Villager.farmer=§7Farmer§r
+entity.Villager.fisherman=§7Fisherman§r
+entity.Villager.shepherd=§7Shepherd§r
+entity.Villager.fletcher=§7Fletcher§r
+entity.Villager.librarian=§7Librarian§r
+entity.Villager.cleric=§7Cleric§r
+entity.Villager.armor=§7Armorer§r
+entity.Villager.weapon=§7Weapon Smith§r
+entity.Villager.tool=§7Tool Smith§r
+entity.Villager.butcher=§7Butcher§r
+entity.Villager.leather=§7Leatherworker§r

@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mc-heads.net https://*.supabase.co https://cdn.modrinth.com; font-src 'self'; connect-src 'none';"
+    />
+    <title>Primarix Client</title>
+    <link rel="icon" type="image/png" href="../assets/primarix-mark.png" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-mark" src="../assets/primarix-mark.png" alt="" />
+        <span class="brand-wordmark">PRIMARIX</span><span class="brand-caption">CLIENT</span>
+      </div>
+      <nav>
+        <button class="tab active" data-view="play">Jugar</button><button class="tab" data-view="mods">Mods</button
+        ><button class="tab" data-view="resourcepacks">Paquetes</button
+        ><button class="tab" data-view="friends">Amigos<span class="badge" id="friends-badge" hidden></span></button
+        ><button class="tab" data-view="admin" id="admin-tab" hidden>Admin</button
+        ><button class="tab" data-view="settings">Ajustes</button>
+      </nav>
+      <button class="update-status" id="update">Buscando actualizaciones…</button>
+      <button class="account" id="profile-open">
+        <span class="avatar" id="avatar">P</span
+        ><span><b id="profile-name">Player</b><small id="profile-mode">Offline</small></span
+        ><span id="profile-admin" class="admin-badge" hidden>ADMIN</span>
+      </button>
+    </header>
+
+    <main>
+      <section id="view-play" class="view active">
+        <canvas id="map" aria-hidden="true"></canvas>
+        <div class="shade"></div>
+        <div class="play-panel">
+          <div class="version"><b>Minecraft 1.8.9</b><small id="install-state">Forge</small></div>
+          <div class="status">
+            <span id="launch-status">Listo para jugar</span>
+            <div id="progress-track"><i id="progress-bar"></i></div>
+          </div>
+          <button class="play" id="launch">JUGAR</button>
+        </div>
+        <p class="hint">Mods y HUD: pulsa <kbd>Shift derecho</kbd> en el juego · <kbd>F8</kbd> oculta el HUD</p>
+      </section>
+
+      <section id="view-mods" class="view">
+        <div class="mods-page">
+          <div class="mods-heading">
+            <div>
+              <h1>Mods</h1>
+              <p id="mods-path" class="mods-path"></p>
+            </div>
+            <div class="mods-actions">
+              <button class="primary" id="mods-import">Importar .jar</button>
+            </div>
+          </div>
+          <div class="mods-toolbar">
+            <input id="mods-filter" type="search" placeholder="Filtrar mods" autocomplete="off" />
+            <button class="secondary" id="mods-refresh" title="Actualizar lista">Actualizar</button>
+          </div>
+          <p id="mods-empty" class="admin-empty" hidden></p>
+          <div id="mods-list" class="mods-list"></div>
+          <p class="mods-disclosure">
+            El mod base queda fuera del gestor y no se envía a servicios externos. Como se ejecuta en este equipo, no es
+            posible garantizar que sus archivos sean secretos o incopiables.
+          </p>
+        </div>
+      </section>
+
+      <section id="view-resourcepacks" class="view">
+        <div class="resourcepacks-page">
+          <div class="resourcepacks-heading">
+            <div>
+              <h1>Biblioteca de paquetes</h1>
+              <p>Explora miles de packs compatibles con Minecraft 1.8.9; el catálogo carga hasta 100 por página.</p>
+            </div>
+            <button class="secondary" id="resourcepacks-open-folder">Mis paquetes</button>
+          </div>
+          <form id="resourcepacks-search" class="resourcepacks-search">
+            <input
+              id="resourcepacks-query"
+              type="search"
+              maxlength="100"
+              placeholder="Buscar PvP, 16x, medieval..."
+              autocomplete="off"
+            />
+            <select id="resourcepacks-sort" aria-label="Ordenar paquetes">
+              <option value="downloads">Más descargados</option>
+              <option value="relevance">Relevancia</option>
+              <option value="follows">Más seguidos</option>
+              <option value="newest_updated">Actualizados</option>
+              <option value="newest_published">Nuevos</option>
+            </select>
+            <button class="primary" id="resourcepacks-search-button">Buscar</button>
+          </form>
+          <p id="resourcepacks-catalog-status" class="resourcepacks-result" role="status" aria-live="polite"></p>
+          <div id="resourcepacks-catalog" class="resourcepacks-catalog"></div>
+          <button class="secondary" id="resourcepacks-more" hidden>Mostrar más</button>
+          <section class="resourcepacks-local">
+            <h2>Instalar desde tu equipo</h2>
+            <p id="resourcepacks-path" class="resourcepacks-path"></p>
+            <input id="resourcepacks-input" type="file" accept=".zip,.rar" multiple hidden />
+            <button id="resourcepacks-drop" class="resourcepacks-drop" type="button">
+              <strong>Arrastra aquí tus paquetes</strong>
+              <small>o haz clic para seleccionar archivos ZIP o RAR</small>
+            </button>
+            <p id="resourcepacks-selection" class="resourcepacks-selection">Ningún archivo seleccionado</p>
+            <button class="primary" id="resourcepacks-import" disabled>Importar</button>
+            <p id="resourcepacks-result" class="resourcepacks-result" role="status" aria-live="polite"></p>
+            <div id="resourcepacks-list" class="resourcepacks-list"></div>
+          </section>
+          <p class="resourcepacks-note">
+            Catálogo de Modrinth. Cada pack conserva su autor y licencia; se descarga desde el CDN oficial y se valida
+            localmente antes de instalar. Los paquetes personales permanecen en tu perfil Primarix.
+          </p>
+        </div>
+      </section>
+
+      <section id="view-friends" class="view">
+        <div class="gate" id="community-gate">
+          <h2>Amigos</h2>
+          <p>Añade amigos, mira a qué están jugando y conversa sin salir del launcher.</p>
+          <button class="primary" id="community-login">Conectar</button>
+        </div>
+        <div class="community" id="community" hidden>
+          <aside class="friends">
+            <form class="add-friend" id="add-friend">
+              <input
+                id="friend-name"
+                maxlength="16"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Nick del amigo"
+              />
+              <button class="primary">Añadir</button>
+            </form>
+            <div id="requests"></div>
+            <div id="friend-list"></div>
+          </aside>
+          <div class="chat">
+            <p class="chat-empty" id="chat-empty">Elige un amigo para conversar.</p>
+            <div class="chat-head" id="chat-head" hidden></div>
+            <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Mensajes"></div>
+            <form class="chat-form" id="chat-form" hidden>
+              <input id="chat-input" maxlength="500" autocomplete="off" placeholder="Mensaje" />
+              <button class="primary">Enviar</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-admin" class="view">
+        <div class="admin-panel">
+          <div class="admin-heading">
+            <span class="admin-badge">ADMIN</span>
+            <h1>Panel de administración</h1>
+          </div>
+          <div class="segmented sub-tabs" id="admin-tabs">
+            <button class="active" data-admin-tab="players">Jugadores</button
+            ><button data-admin-tab="editor">Crear capa</button><button data-admin-tab="catalog">Objetos</button>
+          </div>
+          <div id="admin-players">
+            <p>Busca una cuenta registrada por su nick para administrar el acceso, las PRIMACOINS y los cosméticos.</p>
+            <form id="admin-search" class="admin-search">
+              <input
+                id="admin-name"
+                maxlength="32"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Nick o UUID del jugador"
+              />
+              <button class="primary">Buscar cuenta</button>
+            </form>
+            <div id="admin-result" hidden>
+              <div class="admin-person">
+                <img id="admin-head" class="head" alt="" />
+                <div>
+                  <h2 id="admin-target-name"></h2>
+                  <small id="admin-target-id"></small>
+                </div>
+                <span id="admin-target-role" class="admin-badge" hidden>ADMIN</span>
+              </div>
+              <div class="admin-grid">
+                <div class="admin-card">
+                  <h3>PRIMACOINS</h3>
+                  <p>Define el saldo total del jugador.</p>
+                  <div class="admin-control">
+                    <input id="admin-coins" type="number" min="0" max="10000000" step="1" /><button
+                      class="primary"
+                      data-admin-action="coins"
+                    >
+                      Guardar saldo
+                    </button>
+                  </div>
+                </div>
+                <div class="admin-card">
+                  <h3>Cosméticos</h3>
+                  <div id="admin-items" class="admin-items"></div>
+                </div>
+                <div class="admin-card" id="admin-role-card">
+                  <h3>Cargo</h3>
+                  <p>Solo el propietario puede asignar o quitar administradores.</p>
+                  <div class="admin-control">
+                    <button class="secondary" id="admin-role-button" data-admin-action="role">Hacer admin</button>
+                  </div>
+                </div>
+                <div class="admin-card">
+                  <h3>Acceso al cliente</h3>
+                  <p id="admin-ban-status">Cuenta activa</p>
+                  <input id="admin-ban-reason" maxlength="240" placeholder="Motivo del bloqueo" />
+                  <div class="admin-control">
+                    <button class="danger" id="admin-ban-button" data-admin-action="ban">Bloquear usuario</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p id="admin-empty" class="admin-empty">Busca un jugador para empezar.</p>
+          </div>
+          <div id="admin-editor" class="cape-editor" hidden>
+            <div class="editor-stage">
+              <canvas id="cape-canvas" width="160" height="256"></canvas>
+              <small>Arrastra el texto o la imagen para colocarlos.</small>
+            </div>
+            <div class="editor-controls">
+              <label
+                >Nombre de la capa<input id="cape-name" maxlength="40" autocomplete="off" placeholder="Capa de ejemplo"
+              /></label>
+              <div class="editor-row">
+                <label>Fundo<input type="color" id="cape-bg" value="#1a1a1a" /></label>
+                <label>Texto<input id="cape-text" maxlength="24" autocomplete="off" placeholder="PRIMARIX" /></label>
+                <label>Color<input type="color" id="cape-text-color" value="#ee293d" /></label>
+              </div>
+              <label>Tamaño del texto<input type="range" id="cape-text-size" min="10" max="120" value="26" /></label>
+              <div class="editor-row">
+                <button class="secondary" id="cape-image-pick">Añadir imagen</button
+                ><button class="secondary" id="cape-image-clear" hidden>Quitar imagen</button>
+                <input type="file" id="cape-image" accept="image/png,image/jpeg,image/webp" hidden />
+              </div>
+              <label
+                >Tamaño de la imagen<input type="range" id="cape-image-size" min="10" max="300" value="100"
+              /></label>
+              <p class="editor-help">
+                La parte visible de la capa tiene proporción <b>5:8</b> (10 × 16 píxeles de Minecraft). Para llenar sin
+                recortes, usa una imagen de <b>640 × 1024 px</b> o de proporción 5:8; al 100% ocupará todo el ancho.
+                También se admite PNG con transparencia. La textura final mide 1024 × 512 px; los bordes y el interior
+                usan una versión oscura del color de fondo.
+              </p>
+              <div class="segmented" id="cape-destination">
+                <button class="active" data-destination="store">Tienda</button
+                ><button data-destination="player">Enviar a un jugador</button
+                ><button data-destination="me">Solo para mí</button>
+              </div>
+              <label id="cape-price-field"
+                >Precio en PRIMACOINS<input id="cape-price" type="number" min="0" max="100000" value="100"
+              /></label>
+              <label id="cape-target-field" hidden
+                >Nick del jugador<input id="cape-target" maxlength="32" autocomplete="off" spellcheck="false"
+              /></label>
+              <button class="primary" id="cape-create">Crear capa</button>
+            </div>
+          </div>
+          <div id="admin-catalog" class="admin-catalog" hidden></div>
+        </div>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="settings">
+          <h2>Interfaz</h2>
+          <div class="row">
+            <span>Color de acento<small>Se sincroniza con el menú del cliente.</small></span>
+            <input id="accent-color" type="color" value="#f49caf" aria-label="Color de acento" />
+          </div>
+          <h2>Juego</h2>
+          <div class="row">
+            <label for="memory">Memoria</label>
+            <div class="control">
+              <input type="range" id="memory" min="2" max="8" step="1" value="3" /><output id="memory-value"
+                >3 GB</output
+              >
+            </div>
+          </div>
+          <div class="row">
+            <label for="fullscreen">Pantalla completa</label
+            ><label class="switch"><input id="fullscreen" type="checkbox" /><span></span></label>
+          </div>
+          <div class="row">
+            <label for="pack-toggle">Paquete de Primarix</label
+            ><label class="switch"><input id="pack-toggle" type="checkbox" /><span></span></label>
+          </div>
+          <div class="row">
+            <span>OptiFine<small id="optifine-state">No instalado</small></span>
+            <div class="control">
+              <button class="secondary" id="optifine-site">Descargar</button
+              ><button class="secondary" id="optifine-install">Instalar</button
+              ><button class="secondary" id="optifine-remove" hidden>Quitar</button>
+            </div>
+          </div>
+          <div class="row">
+            <span>Fondo<small id="wallpaper-state">Predeterminado</small></span>
+            <div class="control">
+              <button class="secondary" id="wallpaper-pick">Elegir imagen</button
+              ><button class="secondary" id="wallpaper-reset" hidden>Restablecer</button>
+            </div>
+          </div>
+          <h2>Comunidad</h2>
+          <div class="row">
+            <label for="share-server">Compartir el servidor con amigos y en Discord</label
+            ><label class="switch"><input id="share-server" type="checkbox" /><span></span></label>
+          </div>
+          <div class="row">
+            <span>Cuenta de comunidad<small id="community-account">Sin conexión</small></span
+            ><button class="secondary" id="community-logout" hidden>Cerrar sesión</button>
+          </div>
+          <h2>Discord</h2>
+          <div class="row">
+            <label for="discord-presence"
+              >Mostrar mi actividad<small id="discord-state" role="status">Esperando configuración</small></label
+            >
+            <label class="switch"><input id="discord-presence" type="checkbox" /><span></span></label>
+          </div>
+          <h2>Archivos</h2>
+          <div class="row">
+            <span>Paquetes de recursos</span><button class="secondary" id="open-resourcepacks">Abrir</button>
+          </div>
+          <div class="row"><span>Capturas</span><button class="secondary" id="open-screenshots">Abrir</button></div>
+          <div class="row">
+            <span>Registro de la última partida</span><button class="secondary" id="open-logs">Ver registro</button>
+          </div>
+          <p class="about">Primarix Client <span id="version"></span> · No afiliado con Mojang ni Microsoft</p>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="account-dialog">
+      <div class="dialog-head">
+        <h2>Cuenta</h2>
+        <button class="close" data-close="account-dialog" aria-label="Cerrar">×</button>
+      </div>
+      <div class="segmented">
+        <button class="active" data-account-mode="offline">Offline</button
+        ><button data-account-mode="microsoft">Microsoft</button>
+      </div>
+      <div id="offline-form">
+        <label for="nickname">Nick</label
+        ><input id="nickname" maxlength="16" autocomplete="off" spellcheck="false" placeholder="TuNick" /><button
+          class="primary"
+          id="save-nick"
+        >
+          Guardar
+        </button>
+        <div class="quick-nickname-heading">
+          <label>Accesos rápidos</label>
+          <button class="secondary" id="save-quick-nickname" type="button">Guardar nick actual</button>
+        </div>
+        <div id="quick-nicknames" class="quick-nicknames"></div>
+        <p class="account-note">
+          Estos nicks son perfiles sin conexión. Los servidores con autenticación online requieren la cuenta Microsoft
+          que tiene el juego. Si Minecraft está abierto, el nick nuevo se aplicará cuando cierres y vuelvas a iniciar el
+          juego.
+        </p>
+      </div>
+      <div id="microsoft-form" hidden>
+        <div id="connected-account"></div>
+        <button class="primary" id="login-microsoft">Iniciar sesión con Microsoft</button
+        ><button class="secondary" id="logout-microsoft" hidden>Desconectar</button>
+        <p class="account-note">
+          Puedes cambiar la cuenta Microsoft aquí. Si Minecraft está abierto, reinícialo para entrar a servidores con la
+          cuenta nueva.
+        </p>
+      </div>
+      <p id="account-error" class="error" role="alert"></p>
+    </dialog>
+    <dialog id="logs-dialog" class="wide">
+      <div class="dialog-head">
+        <h2>Registro</h2>
+        <button class="close" data-close="logs-dialog" aria-label="Cerrar">×</button>
+      </div>
+      <pre id="logs-text"></pre>
+    </dialog>
+    <dialog id="resourcepack-details-dialog" class="wide resourcepack-details-dialog">
+      <div class="dialog-head">
+        <h2 id="resourcepack-details-title">Paquete de recursos</h2>
+        <button class="close" data-close="resourcepack-details-dialog" aria-label="Cerrar">×</button>
+      </div>
+      <p id="resourcepack-details-status" class="resourcepacks-result" role="status" aria-live="polite"></p>
+      <div id="resourcepack-details-content" hidden>
+        <p id="resourcepack-details-description" class="resourcepack-details-description"></p>
+        <div id="resourcepack-details-meta" class="resourcepack-details-meta"></div>
+        <div id="resourcepack-details-tags" class="resourcepack-tags"></div>
+        <div id="resourcepack-details-gallery" class="resourcepack-details-gallery"></div>
+        <p id="resourcepack-details-body" class="resourcepack-details-body"></p>
+        <a id="resourcepack-details-link" class="resourcepack-project-link" target="_blank" rel="noopener noreferrer"
+          >Abrir página en Modrinth ↗</a
+        >
+      </div>
+    </dialog>
+    <dialog id="resourcepacks-installed-dialog" class="wide resourcepacks-installed-dialog">
+      <div class="dialog-head">
+        <h2>Mis paquetes</h2>
+        <button class="close" data-close="resourcepacks-installed-dialog" aria-label="Cerrar">×</button>
+      </div>
+      <div class="resourcepacks-installed-actions">
+        <button class="secondary" id="resourcepacks-installed-refresh">Actualizar lista</button>
+        <button class="secondary" id="resourcepacks-installed-folder">Abrir carpeta</button>
+      </div>
+      <p id="resourcepacks-installed-status" class="resourcepacks-result" role="status" aria-live="polite"></p>
+      <div id="resourcepacks-installed-list" class="resourcepacks-installed-list"></div>
+    </dialog>
+    <div id="toast" role="status"></div>
+    <div id="notices" role="status" aria-live="polite"></div>
+    <div id="call-panel" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

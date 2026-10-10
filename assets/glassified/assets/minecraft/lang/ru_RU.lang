@@ -1,0 +1,58 @@
+language.name=Русский
+language.region=Россия
+language.code=ru_RU
+
+
+demo.help.movement=§7Используйте %1$s, %2$s, %3$s, %4$s и мышь для передвижения§r
+demo.help.movementShort=§7Передвигайтесь, нажимая %1$s, %2$s, %3$s, %4$s§r
+demo.help.movementMouse=§7Осматривайтесь, используя мышь§r
+demo.help.jump=§7Для прыжка нажимайте %1$s§r
+demo.help.inventory=§7Используйте %1$s для просмотра инвентаря§r
+demo.help.title=§fMinecraft - демонстрационная игра§r
+demo.help.fullWrapped=§7Демо-версия будет активна 5 игровых дней (около 1 часа 40 минут реального времени). Загляните в "Достижения", там есть подсказки! Удачи!§r
+
+
+container.inventory=§7Инвентарь§r
+container.hopper=§7Загрузочная воронка§r
+container.crafting=§7Создание§r
+container.dispenser=§7Раздатчик§r
+container.dropper=§7Выбрасыватель§r
+container.furnace=§7Печь§r
+container.enchant=§7Чары§r
+container.repair=§7Название и ремонт§r
+container.creative=§7Выбор предмета§r
+container.brewing=§7Варочная стойка§r
+container.chest=§7Сундук§r
+container.chestDouble=§7Большой сундук§r
+container.enderchest=§7Эндер-сундук§r
+container.beacon=§7Маяк§r
+
+
+itemGroup.buildingBlocks=§7Строительные блоки§r
+itemGroup.decorations=§7Декоративные блоки§r
+itemGroup.redstone=§7Механизмы§r
+itemGroup.transportation=§7Транспорт§r
+itemGroup.misc=§7Разное§r
+itemGroup.search=§7Поиск§r
+itemGroup.food=§7Пища§r
+itemGroup.tools=§7Инструменты§r
+itemGroup.combat=§7Оружие и доспехи§r
+itemGroup.brewing=§7Зельеварение§r
+itemGroup.materials=§7Материалы§r
+itemGroup.inventory=§7Инвентарь выживания§r
+
+
+entity.MinecartHopper.name=§7Загрузочная вагонетка§r
+entity.MinecartChest.name=§7Грузовая вагонетка§r
+entity.Villager.name=§7Житель§r
+entity.Villager.farmer=§7Фермер§r
+entity.Villager.fisherman=§7Рыбак§r
+entity.Villager.shepherd=§7Пастух§r
+entity.Villager.fletcher=§7Лучник§r
+entity.Villager.librarian=§7Библиотекарь§r
+entity.Villager.cleric=§7Священник§r
+entity.Villager.armor=§7Бронеков§r
+entity.Villager.weapon=§7Оружейник§r
+entity.Villager.tool=§7Инструментальщик§r
+entity.Villager.butcher=§7Мясник§r
+entity.Villager.leather=§7Кожевник§r

@@ -1,0 +1,5775 @@
+package studio.antagon;
+
+import static studio.antagon.ModuleRegistry.*;
+import static studio.antagon.Reflect.*;
+
+import net.minecraft.client.gui.GuiScreen;
+import net.minecraftforge.client.event.ClientChatReceivedEvent;
+import net.minecraftforge.client.event.GuiScreenEvent;
+import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.client.event.RenderPlayerEvent;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.player.AttackEntityEvent;
+import net.minecraftforge.fml.common.FMLCommonHandler;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.event.FMLInitializationEvent;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.InputEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
+
+import org.lwjgl.BufferUtils;
+import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.Display;
+
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.*;
+import java.lang.reflect.*;
+import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.regex.*;
+
+import javax.imageio.ImageIO;
+
+@Mod(
+        modid = "antagonhud",
+        name = "Primarix Client",
+        version = "0.1.11",
+        clientSideOnly = true,
+        acceptedMinecraftVersions = "[1.8.9]",
+        acceptableRemoteVersions = "*")
+public class AntagonHud {
+    private static int RED = 0xFFEE1515;
+    private static final int WHITE = 0xFFF0EEE8, GRAY = 0xFF8A8883;
+    private static final String[] ACCENT_NAMES = {"rosa", "azul", "verde", "cian", "naranja"};
+    private static final int[] ACCENT_COLORS = {
+        0xFFF49CAF, 0xFF399BFF, 0xFF42D392, 0xFF32C8D4, 0xFFFF9438
+    };
+    private static final String[] HEART_MASK = {
+        "01100110", "11111111", "11111111", "01111110", "00111100", "00011000"
+    };
+    private static final int MENU_BUTTON_ID = 0xA71A;
+    private static final int SETTINGS_BUTTON_ID = 0xA71B,
+            FRIENDS_BUTTON_ID = 0xA71C,
+            ADMIN_BUTTON_ID = 0xA71E,
+            ACCOUNTS_BUTTON_ID = 0xA71F;
+    private static final int PROFILE_ITEM_ID = 0xA720,
+            PROFILE_ADD_OFFLINE_ID = 0xA730,
+            PROFILE_USE_OFFLINE_ID = 0xA731,
+            PROFILE_ADD_MICROSOFT_ID = 0xA732,
+            PROFILE_REMOVE_ID = 0xA740;
+    private static final File UI_REQUEST = new File("antagon-ui-request.txt");
+    private static final File PROFILE_REQUEST = new File("antagon-profile-request.txt");
+    private static final File PROFILE_SNAPSHOT = new File("antagon-accounts.txt");
+    private static final File SESSION = new File("antagon-session.properties");
+    private Object mc;
+    private Class<?> minecraft;
+    private final LinkedList<Long> left = new LinkedList<Long>(), right = new LinkedList<Long>();
+    private final Properties config = new Properties();
+    private final File configFile = new File("config/antagon-hud.properties");
+    private long lastLoad = 0, modified = -1;
+    private boolean hidden = false, f8 = false, reported = false;
+    private final PixelFont font = new PixelFont();
+    private long lastAutoText = 0;
+    private int smokeTicks = 0, worldTicks = 0;
+    private final SimpleDateFormat clock12 = new SimpleDateFormat("hh:mm a");
+    private final SimpleDateFormat clock24 = new SimpleDateFormat("HH:mm");
+    private String clockText = "", clockFormat = "";
+    private long clockMinute = -1;
+    private boolean smokeStarted = false;
+    private long profileSnapshotModified = -1;
+    private int profileSnapshotTicks = 0;
+    private String profileSnapshotContent = "";
+    private String profileNickname = "Player", profileMode = "offline", profileNotice = "";
+    private final List<String> profileOfflineNames = new ArrayList<String>();
+    private final List<String> profileMicrosoftNames = new ArrayList<String>();
+    private final List<ProfileSelectorEntry> profileSelectorEntries =
+            new ArrayList<ProfileSelectorEntry>();
+    private boolean profileSelectorOpen = false, profileInputActive = false;
+    private String profileInput = "";
+    private volatile Object profileSkinTexture;
+    private String profileSkinKey = "";
+    private final Map<String, float[]> bounds = new HashMap<String, float[]>();
+    private float hudScale = 1, hudWidth, hudHeight;
+    private Menu menu;
+    private boolean sprintToggled = false, sprintWas = false;
+    private volatile boolean smokeConfig = false;
+    private boolean looking = false, lookToggled = false, lookKeyWas = false, smokeLook = false;
+    private float camYaw, camPitch, savedYaw, savedPitch, savedPrevYaw, savedPrevPitch;
+    private int savedView;
+
+    private volatile String radioState = "off", radioTitle = "", radioArtist = "", radioArt = "";
+    private volatile float radioPos = 0, radioDur = 0;
+    private volatile int radioVolume = -1;
+    private volatile long volumeSentAt = 0;
+    private double lastReach = 0;
+    private int combo = 0, lastHurt = 0, savedHurt = 0;
+    private long comboAt = 0, pendingAt = 0;
+    private Object pendingTarget;
+    private long lastReachAt = 0;
+    private volatile long radioStamp = 0;
+    private volatile BufferedImage artPending;
+    private int artTexture = 0;
+    private boolean menuLogoLogged = false;
+    private Object[] menuBackgroundTextures;
+    private int[] menuBackgroundFrameDelays;
+    private int menuBackgroundWidth, menuBackgroundHeight;
+    private long menuBackgroundStartedAt;
+    private Object menuLogoTexture;
+    private boolean capeRenderLogged = false;
+    private final Map<String, Object> menuIcons = new HashMap<String, Object>();
+    private String lastChat = null;
+    private int chatId = 0x5A0000, chatCount = 0;
+    private static final String YAW = "field_70177_z",
+            PITCH = "field_70125_A",
+            PREV_YAW = "field_70126_B",
+            PREV_PITCH = "field_70127_C";
+
+    @Mod.EventHandler
+    public void init(FMLInitializationEvent event) throws Exception {
+        minecraft = Class.forName("net.minecraft.client.Minecraft");
+        mc = invoke(minecraft, null, new String[] {"func_71410_x", "getMinecraft"});
+        brandGameWindow();
+        MinecraftForge.EVENT_BUS.register(this);
+        FMLCommonHandler.instance().bus().register(this);
+        load();
+        Thread radio = new Thread(this::radioLoop, "Antagon Radio");
+        radio.setDaemon(true);
+        radio.start();
+        System.out.println(
+                "[PRIMARIX] HUD ready — 0.1.11 / FPS CPS Keys Coordinates Ping Clock NoHurtCam"
+                        + " / Right Shift menu");
+    }
+
+    private void brandGameWindow() {
+        Display.setTitle("Primarix Client");
+        try (InputStream in =
+                getClass()
+                        .getResourceAsStream(
+                                "/assets/antagonhud/textures/gui/title/primarix-mark.png")) {
+            if (in == null) throw new FileNotFoundException("Primarix window icon is missing.");
+            BufferedImage logo = ImageIO.read(in);
+            if (logo == null) throw new IOException("Primarix window icon is invalid.");
+            Display.setIcon(new ByteBuffer[] {windowIcon(logo, 32), windowIcon(logo, 16)});
+            System.out.println("[PRIMARIX] Game window branded.");
+        } catch (Exception e) {
+            System.err.println("[PRIMARIX] Could not set game window icon: " + e);
+        }
+    }
+
+    private static ByteBuffer windowIcon(BufferedImage logo, int size) {
+        BufferedImage scaled = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = scaled.createGraphics();
+        graphics.setRenderingHint(
+                RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        graphics.drawImage(logo, 0, 0, size, size, null);
+        graphics.dispose();
+        ByteBuffer pixels = BufferUtils.createByteBuffer(size * size * 4);
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                int argb = scaled.getRGB(x, y);
+                pixels.put((byte) (argb >> 16));
+                pixels.put((byte) (argb >> 8));
+                pixels.put((byte) argb);
+                pixels.put((byte) (argb >> 24));
+            }
+        }
+        pixels.flip();
+        return pixels;
+    }
+
+    private void load() {
+        if (configFile.lastModified() == modified) return;
+        try (InputStream in = new FileInputStream(configFile)) {
+            Properties next = new Properties();
+            next.load(in);
+            config.clear();
+            config.putAll(next);
+            RED = accent();
+            modified = configFile.lastModified();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private void save() {
+        if (smokeConfig) return;
+        try {
+            configFile.getParentFile().mkdirs();
+            try (OutputStream out = new FileOutputStream(configFile)) {
+                config.store(out, "Antagon HUD");
+            }
+            modified = configFile.lastModified();
+        } catch (IOException e) {
+            System.err.println("[ANTAGON] Could not save config: " + e);
+        }
+    }
+
+    private boolean on(String key, boolean fallback) {
+        return Boolean.parseBoolean(config.getProperty(key, "" + fallback));
+    }
+
+    private boolean enabled(String mod) {
+        return on(mod, defaultEnabled(mod));
+    }
+
+    private float number(String key, float fallback) {
+        try {
+            return Float.parseFloat(config.getProperty(key, "" + fallback));
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    private String opt(String mod, String key) {
+        String property = mod + "." + key;
+        return config.getProperty(property, defaultValue(property));
+    }
+
+    private float percent(String mod, String key) {
+        try {
+            return Float.parseFloat(opt(mod, key).replace("%", "")) / 100f;
+        } catch (Exception e) {
+            return 1;
+        }
+    }
+
+    private boolean flag(String mod, String key) {
+        return opt(mod, key).equals("on");
+    }
+
+    private int keyOf(String mod, String key) {
+        return codeOf(opt(mod, key));
+    }
+
+    private static int codeOf(String v) {
+        if (v.equals("ALT")) return Keyboard.KEY_LMENU;
+        if (v.equals("NINGUNA") || v.equals("NENHUMA")) return -1;
+        if (v.matches("MOUSE\\d{1,2}")) return Integer.parseInt(v.substring(5)) - 101;
+        int code = Keyboard.getKeyIndex(v);
+        return code == Keyboard.KEY_NONE ? -1 : code;
+    }
+
+    private static int colorOf(String name) {
+        for (int i = 0; i < COLOR_NAMES.length; i++)
+            if (COLOR_NAMES[i].equals(name)) return COLORS[i];
+        if (name.equals("branco")) return COLORS[0];
+        if (name.equals("vermelho")) return COLORS[1];
+        if (name.equals("amarelo")) return COLORS[2];
+        if (name.equals("ciano")) return COLORS[4];
+        return COLORS[0];
+    }
+
+    private int accent() {
+        String selected = config.getProperty("ui.accent", ACCENT_NAMES[0]);
+        if (selected.matches("#[0-9a-fA-F]{6}"))
+            return 0xFF000000 | Integer.parseInt(selected.substring(1), 16);
+        for (int i = 0; i < ACCENT_NAMES.length; i++)
+            if (ACCENT_NAMES[i].equals(selected)) return ACCENT_COLORS[i];
+        return ACCENT_COLORS[0];
+    }
+
+    private int accentIndex() {
+        String selected = config.getProperty("ui.accent", ACCENT_NAMES[0]);
+        for (int i = 0; i < ACCENT_NAMES.length; i++)
+            if (ACCENT_NAMES[i].equals(selected)) return i;
+        return 0;
+    }
+
+    private void prune(LinkedList<Long> clicks) {
+        long cutoff = System.currentTimeMillis() - 1000;
+        while (!clicks.isEmpty() && clicks.getFirst() < cutoff) clicks.removeFirst();
+    }
+
+    private static boolean isDown(int code) {
+        return code < -1 ? Mouse.isButtonDown(code + 100) : code > 0 && Keyboard.isKeyDown(code);
+    }
+
+    private void fullBright() {
+        try {
+            Object settings = field(mc, "field_71474_y", "gameSettings");
+            boolean on = enabled("fullbright");
+            if (on && config.getProperty("fullbright.gamma") == null) {
+                config.setProperty("fullbright.gamma", "" + getF(settings, "field_74333_Y"));
+                config.setProperty(
+                        "fullbright.entityShadows", "" + field(settings, "field_181151_V"));
+                save();
+            }
+            if (on) {
+                setF(settings, "field_74333_Y", 100f);
+                setField(
+                        settings,
+                        !flag("fullbright", "shadows")
+                                && Boolean.parseBoolean(
+                                        config.getProperty("fullbright.entityShadows", "true")),
+                        "field_181151_V");
+            } else if (config.getProperty("fullbright.gamma") != null) {
+                setF(
+                        settings,
+                        "field_74333_Y",
+                        Float.parseFloat(config.getProperty("fullbright.gamma")));
+                setField(
+                        settings,
+                        Boolean.parseBoolean(
+                                config.getProperty("fullbright.entityShadows", "true")),
+                        "field_181151_V");
+                config.remove("fullbright.gamma");
+                config.remove("fullbright.entityShadows");
+                save();
+            }
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private int statusTicks = 0;
+    private String lastStatus = "";
+
+    private void writeStatus() {
+        if (++statusTicks % 40 != 0) return;
+        try {
+            String status = "menu";
+            if (field(mc, "field_71441_e", "theWorld") != null) {
+                Object server = call(mc, new String[] {"func_147104_D", "getCurrentServerData"});
+                if ((Boolean) call(mc, new String[] {"func_71356_B", "isSingleplayer"}))
+                    status = "singleplayer";
+                else
+                    status =
+                            server == null
+                                    ? "playing"
+                                    : "server " + field(server, "field_78845_b", "serverIP");
+            }
+            if (status.equals(lastStatus)) return;
+            lastStatus = status;
+            java.nio.file.Files.write(
+                    new File("antagon-status.txt").toPath(), status.getBytes("UTF-8"));
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private void boundKey(int code) {
+        if (enabled("autotext"))
+            for (int i = 1; i <= AUTOTEXT_SLOTS; i++) {
+                String text = config.getProperty("autotext." + i + ".text", "").trim();
+                if (!text.isEmpty()
+                        && code == codeOf(config.getProperty("autotext." + i + ".key", "NENHUMA"))
+                        && System.currentTimeMillis() - lastAutoText > 500) {
+                    lastAutoText = System.currentTimeMillis();
+                    try {
+                        call(
+                                field(mc, "field_71439_g", "thePlayer"),
+                                new String[] {"func_71165_d", "sendChatMessage"},
+                                text);
+                    } catch (Exception e) {
+                        report(e);
+                    }
+                }
+            }
+        if (!enabled("radio")) return;
+        if (code == keyOf("radio", "prev")) Spotify.previous();
+        else if (code == keyOf("radio", "pause")) radioToggle();
+        else if (code == keyOf("radio", "next")) Spotify.next();
+    }
+
+    @SubscribeEvent
+    public void mouse(MouseEvent event) {
+        if (!event.buttonstate) return;
+        if (event.button >= 0) boundKey(event.button - 100);
+        if (event.button == 0) left.add(System.currentTimeMillis());
+        if (event.button == 1) right.add(System.currentTimeMillis());
+    }
+
+    @SubscribeEvent
+    public void key(InputEvent.KeyInputEvent event) {
+        if (!Keyboard.getEventKeyState()) return;
+        int k = Keyboard.getEventKey();
+        if (k == Keyboard.KEY_RSHIFT) {
+            openMenu();
+            return;
+        }
+        boundKey(k);
+    }
+
+    @SubscribeEvent
+    public void profileSelectorKeyboard(GuiScreenEvent.KeyboardInputEvent.Pre event) {
+        try {
+            Object screen = field(event, "gui");
+            if (handleProfileSelectorKey(
+                    screen, Keyboard.getEventKey(), Keyboard.getEventCharacter()))
+                event.setCanceled(true);
+        } catch (Exception error) {
+            report(error);
+        }
+    }
+
+    private boolean handleProfileSelectorKey(Object screen, int key, char character)
+            throws Exception {
+        if (!profileSelectorOpen
+                || !profileInputActive
+                || screen == null
+                || !screen.getClass().getName().equals("net.minecraft.client.gui.GuiMainMenu"))
+            return false;
+        if (key == Keyboard.KEY_ESCAPE) {
+            profileInputActive = false;
+            profileInput = "";
+        } else if (key == Keyboard.KEY_RETURN || key == Keyboard.KEY_NUMPADENTER) {
+            if (profileInput.matches("[A-Za-z0-9_]{3,16}"))
+                sendProfileSelectorRequest("add", profileInput);
+            else profileNotice = "Usa de 3 a 16 letras, numeros o _.";
+            profileInputActive = false;
+            profileInput = "";
+        } else if (key == Keyboard.KEY_BACK) {
+            if (!profileInput.isEmpty())
+                profileInput = profileInput.substring(0, profileInput.length() - 1);
+        } else if ((character >= 'A' && character <= 'Z')
+                || (character >= 'a' && character <= 'z')
+                || (character >= '0' && character <= '9')
+                || character == '_') {
+            if (profileInput.length() < 16) profileInput += character;
+        }
+        refreshProfileSelectorButtons(screen);
+        return true;
+    }
+
+    private void openMenu() {
+        openMenu(null);
+    }
+
+    private void openMenu(GuiScreen parent) {
+        try {
+            call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, new Menu(parent));
+        } catch (Exception e) {
+            System.err.println("[ANTAGON] Menu error: " + e);
+        }
+    }
+
+    @SubscribeEvent
+    public void menuButtons(GuiScreenEvent.InitGuiEvent.Post event) {
+        try {
+            Object gui = field(event, "gui");
+            String name = gui.getClass().getName();
+            if (!name.equals("net.minecraft.client.gui.GuiMainMenu")
+                    && !name.equals("net.minecraft.client.gui.GuiIngameMenu")) return;
+            @SuppressWarnings("unchecked")
+            List<Object> buttons = (List<Object>) field(event, "buttonList");
+            if (name.equals("net.minecraft.client.gui.GuiMainMenu")) {
+                refreshProfileSnapshot();
+                int width =
+                        ((Number) field(gui, "field_146294_l", "width")).intValue();
+                int height = ((Number) field(gui, "field_146295_m", "height")).intValue();
+                boolean accountsFound = false;
+                for (Object button : buttons) {
+                    if (!((Boolean) field(button, "field_146125_m", "visible")).booleanValue()) continue;
+                    int id = ((Number) field(button, "field_146127_k", "id")).intValue();
+                    if (id == ACCOUNTS_BUTTON_ID) {
+                        accountsFound = true;
+                        setProfileSelectorButton(button, width, height);
+                        continue;
+                    }
+                    if (id == 5) {
+                        setHomeMenuButton(button, 4, width, height);
+                        continue;
+                    }
+                    if (id == 14) {
+                        setField(button, true, "field_146125_m", "visible");
+                    }
+                    String label =
+                            id == 1 ? "UN JUGADOR"
+                                    : id == 2 ? "MULTIJUGADOR"
+                                    : id == 6 ? "Mods"
+                                    : id == 14 ? "Reinos"
+                                    : id == 0 ? "Opciones..."
+                                    : id == 4 ? "Salir del juego" : null;
+                    int slot =
+                            id == 1 ? 0
+                                    : id == 2 ? 1
+                                    : id == 6 ? 2
+                                    : id == 14 ? 3
+                                    : id == 0 ? 5
+                                    : id == 4 ? 6 : -1;
+                    if (label == null || slot < 0) continue;
+                    setField(button, label, "field_146126_j", "displayString");
+                    setHomeMenuButton(button, slot, width, height);
+                }
+                if (!accountsFound) {
+                    Object accounts =
+                            newButton(
+                                    ACCOUNTS_BUTTON_ID,
+                                    0,
+                                    0,
+                                    0,
+                                    profileNickname);
+                    setProfileSelectorButton(accounts, width, height);
+                    buttons.add(accounts);
+                }
+                if (profileSelectorOpen) refreshProfileSelectorButtons(gui);
+                return;
+            }
+            for (Object button : buttons)
+                if (((Number) field(button, "field_146127_k", "id")).intValue() == MENU_BUTTON_ID)
+                    return;
+            if (name.equals("net.minecraft.client.gui.GuiIngameMenu")) {
+                Object lan = null;
+                for (Object button : buttons)
+                    if (((Number) field(button, "field_146127_k", "id")).intValue() == 7)
+                        lan = button;
+                if (lan == null) return;
+                int lanX = ((Number) field(lan, "field_146128_h", "xPosition")).intValue();
+                int lanY = ((Number) field(lan, "field_146129_i", "yPosition")).intValue();
+                int rowWidth = ((Number) field(lan, "field_146120_f", "width")).intValue();
+                for (Object button : buttons) {
+                    int y = ((Number) field(button, "field_146129_i", "yPosition")).intValue();
+                    setField(button, y + (y < lanY ? -12 : 12), "field_146129_i", "yPosition");
+                }
+                int[] ids =
+                        sessionAdmin()
+                                ? new int[] {SETTINGS_BUTTON_ID, FRIENDS_BUTTON_ID, ADMIN_BUTTON_ID}
+                                : new int[] {SETTINGS_BUTTON_ID, FRIENDS_BUTTON_ID};
+                int gap = 4, size = 20, total = ids.length * size + (ids.length - 1) * gap;
+                int x = lanX + (rowWidth - total) / 2;
+                for (int id : ids) {
+                    buttons.add(newButton(id, x, lanY - 12, size, ""));
+                    x += size + gap;
+                }
+            } else {
+                Object quit = null;
+                for (Object button : buttons)
+                    if (((Number) field(button, "field_146127_k", "id")).intValue() == 4)
+                        quit = button;
+                if (quit == null) return;
+                int quitX = ((Number) field(quit, "field_146128_h", "xPosition")).intValue();
+                int y = ((Number) field(quit, "field_146129_i", "yPosition")).intValue() + 24;
+                buttons.add(newButton(MENU_BUTTON_ID, quitX - 102, y, 200, "Primarix"));
+            }
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private Object newButton(int id, int x, int y, int width, String label) throws Exception {
+        return Class.forName("net.minecraft.client.gui.GuiButton")
+                .getConstructor(int.class, int.class, int.class, int.class, int.class, String.class)
+                .newInstance(id, x, y, width, 20, label);
+    }
+
+    private static float menuScale(int width, int height) {
+        return MenuLayout.homeScale(width, height);
+    }
+
+    private void setHomeMenuButton(Object button, int slot, int width, int height) throws Exception {
+        int[] bounds = MenuLayout.homeButton(slot, width, height);
+        setField(button, bounds[0], "field_146128_h", "xPosition");
+        setField(button, bounds[1], "field_146129_i", "yPosition");
+        setField(button, bounds[2], "field_146120_f", "width");
+        setField(button, bounds[3], "field_146121_g", "height");
+    }
+
+    private void setProfileSelectorButton(Object button, int width, int height) throws Exception {
+        int[] bounds = MenuLayout.profileSelector(width, height);
+        setField(button, bounds[0], "field_146128_h", "xPosition");
+        setField(button, bounds[1], "field_146129_i", "yPosition");
+        setField(button, bounds[2], "field_146120_f", "width");
+        setField(button, bounds[3], "field_146121_g", "height");
+    }
+
+    private static final class ProfileSelectorEntry {
+        final String command, nickname, label;
+
+        ProfileSelectorEntry(String command, String nickname, String label) {
+            this.command = command;
+            this.nickname = nickname;
+            this.label = label;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void refreshProfileSelectorButtons(Object screen) throws Exception {
+        List<Object> buttons = (List<Object>) field(screen, "field_146292_n", "buttonList");
+        for (Iterator<Object> iterator = buttons.iterator(); iterator.hasNext(); ) {
+            int id = ((Number) field(iterator.next(), "field_146127_k", "id")).intValue();
+            if ((id >= PROFILE_ITEM_ID && id <= PROFILE_ADD_MICROSOFT_ID)
+                    || (id >= PROFILE_REMOVE_ID && id < PROFILE_REMOVE_ID + 16))
+                iterator.remove();
+        }
+        profileSelectorEntries.clear();
+        if (!profileSelectorOpen) return;
+        int width = ((Number) field(screen, "field_146294_l", "width")).intValue();
+        int height = ((Number) field(screen, "field_146295_m", "height")).intValue();
+        float scale = MenuLayout.homeScale(width, height);
+        int[] bounds = MenuLayout.profileSelector(width, height);
+        int rowY = bounds[1] + bounds[3] + Math.round(8 * scale);
+        int rowHeight = Math.max(1, Math.round(21 * scale));
+        int visibleRows =
+                Math.max(1, Math.min(16, (height - rowY - Math.round(62 * scale)) / rowHeight));
+        if (profileMicrosoftNames.contains(profileNickname))
+            profileSelectorEntries.add(
+                    new ProfileSelectorEntry(
+                            "premium-select",
+                            profileNickname,
+                            "MS  " + profileNickname));
+        for (String nickname : profileOfflineNames) {
+            profileSelectorEntries.add(
+                    new ProfileSelectorEntry("select", nickname, "OFF  " + nickname));
+        }
+        if (profileMode.equals("offline") && !profileOfflineNames.contains(profileNickname))
+            profileSelectorEntries.add(
+                    new ProfileSelectorEntry("select", profileNickname, "OFF  " + profileNickname));
+        for (String nickname : profileMicrosoftNames) {
+            if (nickname.equals(profileNickname) && profileMode.equals("microsoft")) continue;
+            profileSelectorEntries.add(
+                    new ProfileSelectorEntry("premium-select", nickname, "MS  " + nickname));
+        }
+        int shown = Math.min(visibleRows, profileSelectorEntries.size());
+        for (int i = 0; i < shown; i++) {
+            ProfileSelectorEntry entry = profileSelectorEntries.get(i);
+            int rowTop = rowY + i * rowHeight;
+            buttons.add(
+                    newProfileSelectorButton(
+                            PROFILE_ITEM_ID + i,
+                            bounds[0] + Math.round(4 * scale),
+                            rowTop,
+                            bounds[2] - Math.round(38 * scale),
+                            entry.label,
+                            scale));
+            buttons.add(
+                    newProfileSelectorButton(
+                            PROFILE_REMOVE_ID + i,
+                            bounds[0] + bounds[2] - Math.round(34 * scale),
+                            rowTop,
+                            Math.round(30 * scale),
+                            "X",
+                            scale));
+        }
+        int addOfflineY = rowY + shown * rowHeight;
+        buttons.add(
+                newProfileSelectorButton(
+                        PROFILE_ADD_OFFLINE_ID,
+                        bounds[0] + Math.round(4 * scale),
+                        addOfflineY,
+                        bounds[2] - Math.round(8 * scale),
+                        profileInputActive ? "ESCRIBE TU NICK..." : "+ NICK OFFLINE",
+                        scale));
+        if (profileInputActive)
+            buttons.add(
+                    newProfileSelectorButton(
+                            PROFILE_USE_OFFLINE_ID,
+                            bounds[0] + bounds[2] - Math.round(58 * scale),
+                            addOfflineY + rowHeight,
+                            Math.round(54 * scale),
+                            "USAR",
+                            scale));
+        buttons.add(
+                newProfileSelectorButton(
+                        PROFILE_ADD_MICROSOFT_ID,
+                        bounds[0] + Math.round(4 * scale),
+                        addOfflineY + Math.round((profileInputActive ? 42 : 21) * scale),
+                        bounds[2] - Math.round(8 * scale),
+                        "+ CUENTA MICROSOFT",
+                        scale));
+    }
+
+    private Object newProfileSelectorButton(int id, int x, int y, int width, String label, float scale)
+            throws Exception {
+        Object button = newButton(id, x, y, width, label);
+        setField(button, Math.max(1, Math.round(20 * scale)), "field_146121_g", "height");
+        return button;
+    }
+
+    private void sendProfileSelectorRequest(String command, String nickname) {
+        try {
+            requestGameProfile(command, nickname);
+            profileNotice =
+                    command.equals("premium")
+                            ? "Inicia sesion con Microsoft en el launcher..."
+                            : "Guardando...";
+        } catch (IOException e) {
+            profileNotice = "No se pudo guardar el perfil.";
+        }
+    }
+
+    private void refreshProfileSnapshot() {
+        refreshProfileSnapshot(false);
+    }
+
+    private void refreshProfileSnapshot(boolean force) {
+        try {
+            long modified = PROFILE_SNAPSHOT.lastModified();
+            if (modified == 0 || (!force && modified == profileSnapshotModified)) return;
+            List<String> lines = Files.readAllLines(PROFILE_SNAPSHOT.toPath(), StandardCharsets.UTF_8);
+            if (lines.size() < 2) return;
+            String nickname = lines.get(0).trim(), mode = lines.get(1).trim();
+            if (!nickname.matches("[A-Za-z0-9_]{3,16}")
+                    || !(mode.equals("offline") || mode.equals("microsoft"))) return;
+            profileNickname = nickname;
+            profileMode = mode;
+            profileOfflineNames.clear();
+            profileMicrosoftNames.clear();
+            profileNotice = "";
+            for (int i = 2; i < lines.size(); i++) {
+                String value = lines.get(i).trim();
+                if (value.startsWith("!")) profileNotice = value.substring(1);
+                else if (value.startsWith("@premium:")) {
+                    String premium = value.substring("@premium:".length());
+                    if (premium.matches("[A-Za-z0-9_]{3,16}")
+                            && !profileMicrosoftNames.contains(premium)
+                            && profileMicrosoftNames.size() < 8)
+                        profileMicrosoftNames.add(premium);
+                } else if (value.matches("[A-Za-z0-9_]{3,16}")
+                        && !profileOfflineNames.contains(value)
+                        && profileOfflineNames.size() < 8) profileOfflineNames.add(value);
+            }
+            profileSnapshotContent = String.join("\n", lines);
+            profileSnapshotModified = modified;
+        } catch (IOException e) {
+            if (PROFILE_SNAPSHOT.exists())
+                System.err.println("[PRIMARIX] Could not read account selector profiles: " + e);
+        }
+    }
+
+    private boolean sessionAdmin() {
+        try (FileInputStream input = new FileInputStream(SESSION)) {
+            Properties role = new Properties();
+            role.load(input);
+            return "true".equals(role.getProperty("admin"));
+        } catch (IOException ignored) {
+            return false;
+        }
+    }
+
+    @SubscribeEvent
+    public void menuButtonLogo(GuiScreenEvent.DrawScreenEvent.Post event) {
+        try {
+            Object gui = field(event, "gui");
+            String name = gui.getClass().getName();
+            if (!name.equals("net.minecraft.client.gui.GuiMainMenu")
+                    && !name.equals("net.minecraft.client.gui.GuiIngameMenu")) return;
+            @SuppressWarnings("unchecked")
+            List<Object> buttons = (List<Object>) field(gui, "field_146292_n", "buttonList");
+            int mouseX = ((Number) field(event, "mouseX")).intValue();
+            int mouseY = ((Number) field(event, "mouseY")).intValue();
+            if (name.equals("net.minecraft.client.gui.GuiMainMenu")) {
+                drawPrimarixTitle(gui, buttons, mouseX, mouseY);
+                return;
+            }
+            String tooltip = null;
+            for (Object button : buttons) {
+                int id = ((Number) field(button, "field_146127_k", "id")).intValue();
+                String icon =
+                        id == MENU_BUTTON_ID || id == SETTINGS_BUTTON_ID
+                                ? "logo"
+                                : id == FRIENDS_BUTTON_ID
+                                        ? "chat"
+                            : id == ADMIN_BUTTON_ID ? "admin" : null;
+                if (icon == null) continue;
+                int x = ((Number) field(button, "field_146128_h", "xPosition")).intValue();
+                int y = ((Number) field(button, "field_146129_i", "yPosition")).intValue();
+                int width = ((Number) field(button, "field_146120_f", "width")).intValue();
+                int iconX = id == MENU_BUTTON_ID ? x + width / 2 - 39 : x + 2;
+                if (id == MENU_BUTTON_ID || id == SETTINGS_BUTTON_ID) drawPrimarixIcon(iconX, y + 2);
+                else drawMenuIcon(icon, iconX, y + 2);
+                if (id != MENU_BUTTON_ID
+                        && mouseX >= x
+                        && mouseX < x + width
+                        && mouseY >= y
+                        && mouseY < y + 20)
+                    tooltip =
+                            id == SETTINGS_BUTTON_ID
+                                        ? "Ajustes de Primarix"
+                                    : id == FRIENDS_BUTTON_ID
+                                            ? "Amigos y chat"
+                                            : "Admin";
+                if (!menuLogoLogged) {
+                    System.out.println("[PRIMARIX] Menu icons rendered");
+                    menuLogoLogged = true;
+                }
+            }
+            if (tooltip != null)
+                call(
+                        gui,
+                        new String[] {"func_146283_a", "drawHoveringText"},
+                        Collections.singletonList(tooltip),
+                        mouseX,
+                        mouseY);
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private void drawPrimarixTitle(Object gui, List<Object> buttons, int mouseX, int mouseY) throws Exception {
+        int width = ((Number) field(gui, "field_146294_l", "width")).intValue();
+        int height = ((Number) field(gui, "field_146295_m", "height")).intValue();
+        refreshProfileSnapshot();
+        begin(1f);
+        try {
+            drawMainMenuBackground(width, height);
+            drawMenuAtmosphere(width, height);
+            drawProfileSelectorDropdown(width, height);
+            for (Object button : buttons) {
+                if (!((Boolean) field(button, "field_146125_m", "visible")).booleanValue()) continue;
+                int id = ((Number) field(button, "field_146127_k", "id")).intValue();
+                int x = ((Number) field(button, "field_146128_h", "xPosition")).intValue();
+                int y = ((Number) field(button, "field_146129_i", "yPosition")).intValue();
+                int buttonWidth = ((Number) field(button, "field_146120_f", "width")).intValue();
+                int buttonHeight = ((Number) field(button, "field_146121_g", "height")).intValue();
+                String label =
+                        id == ACCOUNTS_BUTTON_ID
+                                ? profileNickname
+                                : id >= PROFILE_ITEM_ID && id < PROFILE_ITEM_ID + profileSelectorEntries.size()
+                                        ? profileSelectorEntries.get(id - PROFILE_ITEM_ID).label
+                                        : id == PROFILE_ADD_OFFLINE_ID
+                                                ? profileInputActive ? "ESCRIBE TU NICK..." : "+ NICK OFFLINE"
+                                                : id == PROFILE_USE_OFFLINE_ID
+                                                        ? "USAR"
+                                                        : id == PROFILE_ADD_MICROSOFT_ID
+                                                                ? "+ CUENTA MICROSOFT"
+                                : id == 5
+                                        ? "ES"
+                                        : (String) field(button, "field_146126_j", "displayString");
+                boolean hover = mouseX >= x && mouseX < x + buttonWidth && mouseY >= y && mouseY < y + buttonHeight;
+                drawClientMenuButton(id, x, y, buttonWidth, buttonHeight, label, hover);
+            }
+            drawProfileSelectorHeader(width, mouseX, mouseY);
+            if (!menuLogoLogged) {
+                System.out.println("[PRIMARIX] Animated GIF skyline, centered Blockbench title, and centered buttons rendered");
+                menuLogoLogged = true;
+            }
+        } finally {
+            end();
+        }
+    }
+
+    private void drawMenuAtmosphere(int width, int height) {
+        long frame = System.currentTimeMillis() / 70L;
+        float scale = menuScale(width, height);
+        int color = accent() & 0x00FFFFFF;
+        for (int i = 0; i < 14; i++) {
+            int x = (int) Math.floorMod(i * 97L + frame * (1 + i % 2), Math.max(1, width));
+            int y = Math.round((10 + (i * 37 % Math.max(1, height / 3))) * scale);
+            int alpha = 16 + (int) (12 * (1 + Math.sin(System.currentTimeMillis() / 700.0 + i)));
+            rect(x, y, Math.max(1, 2 * scale), Math.max(1, 2 * scale), (alpha << 24) | color);
+        }
+    }
+
+    private void drawMainMenuBackground(int width, int height) throws Exception {
+        Object textures = call(mc, new String[] {"func_110434_K", "getTextureManager"});
+        ensureMenuBackgroundFrames();
+        long cycle = 0;
+        for (int delay : menuBackgroundFrameDelays) cycle += delay;
+        long frameTime = Math.floorMod(System.currentTimeMillis() - menuBackgroundStartedAt, cycle);
+        int frame = 0;
+        while (frameTime >= menuBackgroundFrameDelays[frame]) {
+            frameTime -= menuBackgroundFrameDelays[frame++];
+        }
+        call(
+                textures,
+                new String[] {"func_110577_a", "bindTexture"},
+                menuBackgroundTextures[frame]);
+        color(0xFFFFFFFF);
+        float backgroundScale =
+                Math.max(width / (float) menuBackgroundWidth, height / (float) menuBackgroundHeight);
+        int imageWidth = Math.round(menuBackgroundWidth * backgroundScale);
+        int imageHeight = Math.round(menuBackgroundHeight * backgroundScale);
+        invoke(
+                Class.forName("net.minecraft.client.gui.Gui"),
+                null,
+                new String[] {"func_146110_a", "drawModalRectWithCustomSizedTexture"},
+                (width - imageWidth) / 2,
+                (height - imageHeight) / 2,
+                0f,
+                0f,
+                imageWidth,
+                imageHeight,
+                (float) imageWidth,
+                (float) imageHeight);
+        rect(0, 0, width, height, 0x300D0914);
+        if (menuLogoTexture == null)
+            menuLogoTexture =
+                    Class.forName("net.minecraft.util.ResourceLocation")
+                            .getConstructor(String.class, String.class)
+                            .newInstance("antagon", "menu-wordmark.png");
+        call(textures, new String[] {"func_110577_a", "bindTexture"}, menuLogoTexture);
+        float logoScale = menuScale(width, height);
+        int logoWidth = Math.round(610 * logoScale);
+        int logoHeight = Math.round(179 * logoScale);
+        invoke(
+                Class.forName("net.minecraft.client.gui.Gui"),
+                null,
+                new String[] {"func_146110_a", "drawModalRectWithCustomSizedTexture"},
+                MenuLayout.centeredLogoX(width, logoWidth),
+                Math.round(16 * logoScale),
+                0f,
+                0f,
+                logoWidth,
+                logoHeight,
+                (float) logoWidth,
+                (float) logoHeight);
+    }
+
+    private void ensureMenuBackgroundFrames() throws Exception {
+        if (menuBackgroundTextures != null) return;
+        InputStream metadata =
+                AntagonHud.class.getResourceAsStream("/assets/antagon/menu-frames/frame-delays.txt");
+        if (metadata == null) throw new IOException("No se encontraron los cuadros del GIF del menú.");
+        int frameCount, width, height;
+        int[] delays;
+        try (BufferedReader reader =
+                new BufferedReader(new InputStreamReader(metadata, StandardCharsets.UTF_8))) {
+            String[] dimensions = reader.readLine().trim().split("\\s+");
+            if (dimensions.length != 3) throw new IOException("Metadatos de animación del menú inválidos.");
+            width = Integer.parseInt(dimensions[0]);
+            height = Integer.parseInt(dimensions[1]);
+            frameCount = Integer.parseInt(dimensions[2]);
+            if (width < 1
+                    || width > 8192
+                    || height < 1
+                    || height > 8192
+                    || frameCount < 2
+                    || frameCount > 1000)
+                throw new IOException("Dimensiones o cuadros del GIF del menú no válidos.");
+            delays = new int[frameCount];
+            for (int i = 0; i < frameCount; i++) {
+                String value = reader.readLine();
+                if (value == null) throw new IOException("Faltan duraciones en el GIF del menú.");
+                delays[i] = Math.max(20, Integer.parseInt(value.trim()));
+            }
+        }
+        Object[] textures = new Object[frameCount];
+        Class<?> resourceLocation = Class.forName("net.minecraft.util.ResourceLocation");
+        for (int i = 0; i < frameCount; i++) {
+            String path = String.format(Locale.ROOT, "menu-frames/frame-%03d.png", i);
+            textures[i] =
+                    resourceLocation
+                            .getConstructor(String.class, String.class)
+                            .newInstance("antagon", path);
+        }
+        menuBackgroundFrameDelays = delays;
+        menuBackgroundTextures = textures;
+        menuBackgroundWidth = width;
+        menuBackgroundHeight = height;
+        menuBackgroundStartedAt = System.currentTimeMillis();
+    }
+
+    private void drawProfileSelectorDropdown(int screenWidth, int screenHeight) {
+        if (!profileSelectorOpen) return;
+        float scale = MenuLayout.homeScale(screenWidth, screenHeight);
+        int[] bounds = MenuLayout.profileSelector(screenWidth, screenHeight);
+        int margin = Math.round(8 * scale);
+        int headerHeight = Math.round(21 * scale);
+        int rowHeight = Math.max(1, Math.round(21 * scale));
+        int rowY = bounds[1] + bounds[3] + margin;
+        int visibleRows =
+                Math.max(1, Math.min(16, (screenHeight - rowY - Math.round(62 * scale)) / rowHeight));
+        int shown = Math.min(visibleRows, profileSelectorEntries.size());
+        int height =
+                Math.round((32 + shown * 21 + (profileInputActive ? 70 : 42)) * scale);
+        rect(bounds[0] + margin / 2, rowY + margin / 2, bounds[2], height, 0xA0000000);
+        rect(bounds[0], rowY, bounds[2], height, 0xF4191C23);
+        outline(bounds[0], rowY, bounds[2], height, 0xFFD2D4DA);
+        scaledMenuText(
+                "CUENTAS GUARDADAS",
+                bounds[0] + margin,
+                rowY + Math.round(7 * scale),
+                0xFFBFC4CE,
+                scale);
+        if (profileInputActive) {
+            int inputY = rowY + headerHeight + shown * rowHeight;
+            rect(bounds[0] + margin / 2, inputY, bounds[2] - Math.round(68 * scale),
+                    Math.round(18 * scale), 0xFF101217);
+            outline(bounds[0] + margin / 2, inputY, bounds[2] - Math.round(68 * scale),
+                    Math.round(18 * scale), 0xFF777B85);
+            String visibleInput =
+                    profileInput + (System.currentTimeMillis() / 500 % 2 == 0 ? "_" : "");
+            scaledMenuText(
+                    visibleInput.isEmpty()
+                            ? "Escribe un nick..."
+                            : fit(visibleInput, (bounds[2] - Math.round(78 * scale)) / scale),
+                    bounds[0] + Math.round(10 * scale),
+                    inputY + Math.round(2 * scale),
+                    profileInput.isEmpty() ? GRAY : WHITE,
+                    scale);
+        }
+        if (!profileNotice.isEmpty())
+            scaledMenuText(
+                    fit(profileNotice, (bounds[2] - Math.round(12 * scale)) / scale),
+                    bounds[0] + Math.round(6 * scale),
+                    rowY + height - Math.round(14 * scale),
+                    0xFFFFD34A,
+                    scale);
+    }
+
+    private void drawProfileSelectorHeader(int screenWidth, int mouseX, int mouseY)
+            throws Exception {
+        Object screen = field(mc, "field_71462_r", "currentScreen");
+        int screenHeight =
+                ((Number) field(screen, "field_146295_m", "height")).intValue();
+        float scale = MenuLayout.homeScale(screenWidth, screenHeight);
+        int[] bounds = MenuLayout.profileSelector(screenWidth, screenHeight);
+        boolean hover =
+                mouseX >= bounds[0]
+                        && mouseX < bounds[0] + bounds[2]
+                        && mouseY >= bounds[1]
+                        && mouseY < bounds[1] + bounds[3];
+        rect(
+                bounds[0] + Math.round(3 * scale),
+                bounds[1] + Math.round(4 * scale),
+                bounds[2],
+                bounds[3],
+                0xA0000000);
+        rect(bounds[0], bounds[1], bounds[2], bounds[3], hover ? 0xFF282A32 : 0xFF101217);
+        outline(bounds[0], bounds[1], bounds[2], bounds[3], hover ? 0xFFFF2F61 : 0xFFD2D4DA);
+        outline(
+                bounds[0] + Math.round(scale),
+                bounds[1] + Math.round(scale),
+                bounds[2] - Math.round(2 * scale),
+                bounds[3] - Math.round(2 * scale),
+                0xFF777B85);
+        drawProfileSkin(
+                bounds[0] + Math.round(4 * scale),
+                bounds[1] + Math.round(3 * scale),
+                Math.round(24 * scale));
+        String shownName = fit(profileNickname, (bounds[2] - Math.round(54 * scale)) / scale);
+        scaledMenuText(
+                shownName,
+                bounds[0] + Math.round(34 * scale),
+                bounds[1] + Math.round(6 * scale),
+                WHITE,
+                scale);
+        scaledMenuText(
+                profileMode.equals("microsoft") ? "MICROSOFT" : "OFFLINE",
+                bounds[0] + Math.round(34 * scale),
+                bounds[1] + Math.round(18 * scale),
+                profileMode.equals("microsoft") ? 0xFF8CCBFF : 0xFFB7BAC2,
+                scale);
+        scaledMenuText(
+                profileSelectorOpen ? "\u25b2" : "\u25bc",
+                bounds[0] + bounds[2] - Math.round(15 * scale),
+                bounds[1] + Math.round(10 * scale),
+                WHITE,
+                scale);
+    }
+
+    private void drawProfileSkin(int x, int y, int size) throws Exception {
+        Object session = field(mc, "field_71449_j", "session");
+        Object profile = call(session, new String[] {"func_148256_e", "getProfile"});
+        String profileName = (String) call(profile, new String[] {"getName"});
+        Object id = call(profile, new String[] {"getId"});
+        String key = id + ":" + profileName;
+        if (!key.equals(profileSkinKey)) {
+            profileSkinKey = key;
+            profileSkinTexture =
+                    Class.forName("net.minecraft.util.ResourceLocation")
+                            .getConstructor(String.class)
+                            .newInstance("textures/entity/steve.png");
+            Class<?> callbackClass =
+                    Class.forName("net.minecraft.client.resources.SkinManager$SkinAvailableCallback");
+            Object callback =
+                    Proxy.newProxyInstance(
+                            callbackClass.getClassLoader(),
+                            new Class<?>[] {callbackClass},
+                            new InvocationHandler() {
+                                @Override
+                                public Object invoke(Object proxy, Method method, Object[] args) {
+                                    if (method.getName().equals("skinAvailable")
+                                            && args != null
+                                            && args.length > 1
+                                            && "SKIN".equals(String.valueOf(args[0]))) {
+                                        profileSkinTexture = args[1];
+                                    }
+                                    return null;
+                                }
+                            });
+            Object skinManager = call(mc, new String[] {"func_152342_ad", "getSkinManager"});
+            call(
+                    skinManager,
+                    new String[] {"func_152790_a", "loadProfileTextures"},
+                    profile,
+                    callback,
+                    Boolean.valueOf(profileMode.equals("microsoft")));
+        }
+        Object texture = profileSkinTexture;
+        if (texture == null) return;
+        Class<?> gl =
+                Class.forName("net.minecraft.client.renderer.GlStateManager");
+        invoke(gl, null, new String[] {"func_179147_l", "enableBlend"});
+        invoke(gl, null, new String[] {"func_179131_c", "color"}, 1f, 1f, 1f, 1f);
+        Object textureManager = call(mc, new String[] {"func_110434_K", "getTextureManager"});
+        call(textureManager, new String[] {"func_110577_a", "bindTexture"}, texture);
+        GL11.glPushMatrix();
+        try {
+            GL11.glTranslatef(x, y, 0f);
+            GL11.glScalef(size / 8f, size / 8f, 1f);
+            Class<?> gui = Class.forName("net.minecraft.client.gui.Gui");
+            invoke(
+                    gui,
+                    null,
+                    new String[] {"func_146110_a", "drawModalRectWithCustomSizedTexture"},
+                    0,
+                    0,
+                    8f,
+                    8f,
+                    8,
+                    8,
+                    64f,
+                    64f);
+            invoke(
+                    gui,
+                    null,
+                    new String[] {"func_146110_a", "drawModalRectWithCustomSizedTexture"},
+                    0,
+                    0,
+                    40f,
+                    8f,
+                    8,
+                    8,
+                    64f,
+                    64f);
+        } finally {
+            GL11.glPopMatrix();
+        }
+    }
+
+    private void drawClientMenuButton(
+            int id, int x, int y, int width, int height, String label, boolean hover)
+            throws Exception {
+        if (id == ACCOUNTS_BUTTON_ID) return;
+        rect(x + 4, y + 5, width, height, 0x75000000);
+        rect(x, y, width, height, hover ? 0xD134202F : 0xC91C1520);
+        int accentColor = accent() & 0x00FFFFFF;
+        outline(
+                x,
+                y,
+                width,
+                height,
+                hover ? 0xFF000000 | accentColor : 0x88E0C8D2);
+        outline(x + 1, y + 1, width - 2, height - 2, hover ? 0x99000000 | accentColor : 0x38FFFFFF);
+        rect(x + 1, y + 1, width - 2, 1, 0x38FFFFFF);
+        if (label == null || label.isEmpty()) return;
+        if (id < PROFILE_ITEM_ID || id >= PROFILE_ITEM_ID + profileSelectorEntries.size())
+            label = label.toUpperCase(Locale.ROOT);
+        float centerX = x + width / 2f;
+        float scale = Math.min(1f, (width - 20f) / Math.max(1f, font.width(label)));
+        scale = Math.min(scale, Math.max(0.25f, (height - 4f) / 16f));
+        GL11.glPushMatrix();
+        GL11.glTranslatef(centerX, y + (height - 16 * scale) / 2f, 0);
+        GL11.glScalef(scale, scale, 1f);
+        text(label, -font.width(label) / 2f, 0, WHITE);
+        GL11.glPopMatrix();
+    }
+
+    private void drawPrimarixIcon(int x, int y) throws Exception {
+        drawMenuIcon("logo", x, y);
+    }
+
+    private void drawMenuIcon(String icon, int x, int y) throws Exception {
+        Object location = menuIcons.get(icon);
+        if (location == null) {
+            location =
+                    Class.forName("net.minecraft.util.ResourceLocation")
+                            .getConstructor(String.class, String.class)
+                            .newInstance("antagon", icon + ".png");
+            menuIcons.put(icon, location);
+        }
+        Class<?> state = Class.forName("net.minecraft.client.renderer.GlStateManager");
+        invoke(state, null, new String[] {"func_179147_l", "enableBlend"});
+        invoke(state, null, new String[] {"func_179131_c", "color"}, 1f, 1f, 1f, 1f);
+        Object textures = call(mc, new String[] {"func_110434_K", "getTextureManager"});
+        call(textures, new String[] {"func_110577_a", "bindTexture"}, location);
+        invoke(
+                Class.forName("net.minecraft.client.gui.Gui"),
+                null,
+                new String[] {"func_146110_a", "drawModalRectWithCustomSizedTexture"},
+                x,
+                y,
+                0f,
+                0f,
+                16,
+                16,
+                16f,
+                16f);
+    }
+
+    @SubscribeEvent
+    public void menuButtonClick(GuiScreenEvent.ActionPerformedEvent.Pre event) {
+        try {
+            Object button = field(event, "button");
+            int id = ((Number) field(button, "field_146127_k", "id")).intValue();
+            GuiScreen screen = (GuiScreen) field(event, "gui");
+            if (screen.getClass().getName().equals("net.minecraft.client.gui.GuiMainMenu")) {
+                if (id == ACCOUNTS_BUTTON_ID) {
+                    refreshProfileSnapshot();
+                    profileSelectorOpen = !profileSelectorOpen;
+                    profileInputActive = false;
+                    profileInput = "";
+                    refreshProfileSelectorButtons(screen);
+                    event.setCanceled(true);
+                    return;
+                }
+                if (id == PROFILE_ADD_OFFLINE_ID) {
+                    profileInputActive = !profileInputActive;
+                    profileInput = "";
+                    refreshProfileSelectorButtons(screen);
+                    event.setCanceled(true);
+                    return;
+                }
+                if (id == PROFILE_USE_OFFLINE_ID) {
+                    if (profileInput.matches("[A-Za-z0-9_]{3,16}")) {
+                        sendProfileSelectorRequest("add", profileInput);
+                        profileSelectorOpen = false;
+                        profileInputActive = false;
+                        profileInput = "";
+                        refreshProfileSelectorButtons(screen);
+                    } else profileNotice = "Usa de 3 a 16 letras, numeros o _.";
+                    event.setCanceled(true);
+                    return;
+                }
+                if (id == PROFILE_ADD_MICROSOFT_ID) {
+                    sendProfileSelectorRequest("premium", "");
+                    event.setCanceled(true);
+                    return;
+                }
+                if (id >= PROFILE_ITEM_ID
+                        && id < PROFILE_ITEM_ID + profileSelectorEntries.size()) {
+                    ProfileSelectorEntry entry = profileSelectorEntries.get(id - PROFILE_ITEM_ID);
+                    sendProfileSelectorRequest(entry.command, entry.nickname);
+                    if (entry.command.equals("select") || entry.command.equals("premium-select"))
+                        {
+                            profileSelectorOpen = false;
+                            refreshProfileSelectorButtons(screen);
+                        }
+                    event.setCanceled(true);
+                    return;
+                }
+                if (id >= PROFILE_REMOVE_ID
+                        && id < PROFILE_REMOVE_ID + profileSelectorEntries.size()) {
+                    int index = id - PROFILE_REMOVE_ID;
+                    if (index >= profileSelectorEntries.size()) return;
+                    ProfileSelectorEntry entry = profileSelectorEntries.get(index);
+                    sendProfileSelectorRequest(
+                            entry.command.equals("premium-select") ? "premium-remove" : "remove",
+                            entry.nickname);
+                    profileNotice = "Quitando " + entry.nickname + "...";
+                    event.setCanceled(true);
+                    return;
+                }
+            }
+            if (id == MENU_BUTTON_ID || id == SETTINGS_BUTTON_ID) openMenu(screen);
+            else if (id == 6 && screen.getClass().getName().equals("net.minecraft.client.gui.GuiMainMenu"))
+                openMenu(screen);
+            else if (id == ACCOUNTS_BUTTON_ID) {
+                call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, new AccountsMenu(screen));
+                event.setCanceled(true);
+            } else if (id == FRIENDS_BUTTON_ID)
+                call(
+                        mc,
+                        new String[] {"func_147108_a", "displayGuiScreen"},
+                        new Hub(screen, "friends"));
+            else if (id == ADMIN_BUTTON_ID && sessionAdmin()) requestLauncherView("admin");
+            else return;
+            event.setCanceled(true);
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private void requestLauncherView(String view) throws IOException {
+        File temporary = new File("antagon-ui-request.tmp");
+        Files.write(temporary.toPath(), view.getBytes(StandardCharsets.UTF_8));
+        try {
+            Files.move(
+                    temporary.toPath(),
+                    UI_REQUEST.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+            Files.move(
+                    temporary.toPath(), UI_REQUEST.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private void requestGameProfile(String command, String nickname) throws IOException {
+        File temporary = new File("antagon-profile-request.tmp");
+        Files.write(
+                temporary.toPath(),
+                ("profile\t" + command + "\t" + nickname).getBytes(StandardCharsets.UTF_8));
+        try {
+            Files.move(
+                    temporary.toPath(),
+                    PROFILE_REQUEST.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+            Files.move(
+                    temporary.toPath(), PROFILE_REQUEST.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    @SubscribeEvent
+    public void renderPlayer(RenderPlayerEvent.Pre event) {
+        try {
+            Cosmetics.beforeRender(field(event, "entityPlayer"));
+            if (!capeRenderLogged) {
+                System.out.println("[ANTAGON] Player render cape bridge active");
+                capeRenderLogged = true;
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    @SubscribeEvent
+    public void tick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.START && enabled("hitdelay"))
+            try {
+                setField(mc, 0, "field_71429_W", "leftClickCounter");
+            } catch (Exception e) {
+                report(e);
+            }
+        if (event.phase != TickEvent.Phase.END) return;
+        syncLocalProfile();
+        Cosmetics.tick(mc);
+        Cosmetics.installLayers(mc);
+        boolean pressed = Keyboard.isKeyDown(Keyboard.KEY_F8);
+        if (pressed && !f8) hidden = !hidden;
+        f8 = pressed;
+        if (System.currentTimeMillis() - lastLoad > 1000) {
+            load();
+            lastLoad = System.currentTimeMillis();
+        }
+        prune(left);
+        prune(right);
+        sprint();
+        chatSettings();
+        Hooks.hideScoreboard = enabled("scoreboard");
+        Hooks.itemPhysics = enabled("itemphysics");
+        fullBright();
+        if (enabled("hitdelay"))
+            try {
+                setField(mc, 0, "field_71429_W", "leftClickCounter");
+            } catch (Exception e) {
+                report(e);
+            }
+        writeStatus();
+        comboTick();
+        hitColor();
+        Hooks.transparentChatBackground = enabled("chat") && flag("chat", "transparent");
+        if (Boolean.getBoolean("antagon.smoke")) smoke();
+        if (System.getProperty("antagon.wallpaper") != null) wallpaper();
+    }
+
+    private void syncLocalProfile() {
+        syncLocalProfile(false);
+    }
+
+    private void syncLocalProfile(boolean force) {
+        try {
+            if (!force && ++profileSnapshotTicks % 20 != 0) return;
+            long previousModified = profileSnapshotModified;
+            String previousNickname = profileNickname, previousMode = profileMode;
+            refreshProfileSnapshot(force);
+            if (profileSnapshotModified == previousModified
+                    && profileNickname.equals(previousNickname)
+                    && profileMode.equals(previousMode)) return;
+            if (profileMode.equals("offline")) LocalIdentity.applyOffline(mc, profileNickname);
+            Cosmetics.setLocalAlias(profileNickname);
+            System.out.println(
+                    "[PRIMARIX] Active " + profileMode + " nickname applied: " + profileNickname);
+        } catch (Exception e) {
+            if (PROFILE_SNAPSHOT.exists()) System.err.println("[PRIMARIX] Could not read selected local nick: " + e);
+        }
+    }
+
+    private int wpTicks = 0;
+    private boolean wpStarted = false, wpDepth = false;
+
+    private void wallpaper() {
+        try {
+            String[] a = System.getProperty("antagon.wallpaper").split(",");
+            long seed = Long.parseLong(a[0]);
+            double x = Double.parseDouble(a[1]),
+                    y = Double.parseDouble(a[2]),
+                    z = Double.parseDouble(a[3]);
+            float yaw = Float.parseFloat(a[4]), pitch = Float.parseFloat(a[5]);
+            long time = Long.parseLong(a[6]);
+            if (!wpStarted) {
+                if (++wpTicks < 80) return;
+                wpStarted = true;
+                wpTicks = 0;
+                Class<?> ws = Class.forName("net.minecraft.world.WorldSettings"),
+                        mode = Class.forName("net.minecraft.world.WorldSettings$GameType"),
+                        wt = Class.forName("net.minecraft.world.WorldType");
+                Field normal = wt.getDeclaredField("field_77137_b");
+                normal.setAccessible(true);
+                Object options =
+                        ws.getConstructor(long.class, mode, boolean.class, boolean.class, wt)
+                                .newInstance(
+                                        seed,
+                                        Enum.valueOf((Class) mode, "CREATIVE"),
+                                        true,
+                                        false,
+                                        normal.get(null));
+                call(
+                        mc,
+                        new String[] {"func_71371_a", "launchIntegratedServer"},
+                        "Antagon-Wallpaper-" + seed,
+                        "Antagon Wallpaper",
+                        options);
+                return;
+            }
+            Object player = field(mc, "field_71439_g", "thePlayer");
+            if (player == null) return;
+            if (field(mc, "field_71462_r", "currentScreen") != null)
+                call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+            Object settings = field(mc, "field_71474_y", "gameSettings");
+            setField(settings, true, "field_74319_N", "hideGUI");
+            call(
+                    field(mc, "field_71458_u", "guiAchievement"),
+                    new String[] {"func_146257_b", "clearAchievements"});
+            setField(
+                    field(player, "field_71075_bZ", "capabilities"),
+                    true,
+                    "field_75100_b",
+                    "isFlying");
+            call(
+                    player,
+                    new String[] {"func_70012_b", "setLocationAndAngles"},
+                    x,
+                    y,
+                    z,
+                    yaw,
+                    pitch);
+            setF(player, PREV_YAW, yaw);
+            setF(player, PREV_PITCH, pitch);
+            Object server =
+                    call(
+                            call(mc, new String[] {"func_71401_C", "getIntegratedServer"}),
+                            new String[] {"func_71218_a", "worldServerForDimension"},
+                            0);
+            call(server, new String[] {"func_72877_b", "setWorldTime"}, time);
+            Object info = call(server, new String[] {"func_72912_H", "getWorldInfo"});
+            call(info, new String[] {"func_76084_b", "setRaining"}, false);
+            call(info, new String[] {"func_76069_a", "setThundering"}, false);
+            call(
+                    field(mc, "field_71441_e", "theWorld"),
+                    new String[] {"func_72877_b", "setWorldTime"},
+                    time);
+            wpTicks++;
+            if (wpTicks == 700) wpDepth = true;
+            if (wpTicks == 702) shot("wallpaper.png");
+            if (wpTicks == 720) call(mc, new String[] {"func_71400_g", "shutdown"});
+        } catch (Exception e) {
+            System.err.println("[ANTAGON WALLPAPER] " + e);
+            e.printStackTrace();
+        }
+    }
+
+    @SubscribeEvent
+    public void wallpaperDepth(RenderWorldLastEvent event) {
+        if (!wpDepth) return;
+        wpDepth = false;
+        try {
+            int w = ((Number) field(mc, "field_71443_c", "displayWidth")).intValue(),
+                    h = ((Number) field(mc, "field_71440_d", "displayHeight")).intValue();
+            java.nio.FloatBuffer buf = BufferUtils.createFloatBuffer(w * h);
+            GL11.glReadPixels(0, 0, w, h, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, buf);
+            float near = .05f, far = 12 * 16 * 1.4142f;
+            BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_BYTE_GRAY);
+            for (int yy = 0; yy < h; yy++)
+                for (int xx = 0; xx < w; xx++) {
+                    float d = buf.get(yy * w + xx),
+                            linear = 2 * near * far / (far + near - (2 * d - 1) * (far - near));
+                    int v =
+                            d >= .99999f
+                                    ? 0
+                                    : (int)
+                                            Math.max(
+                                                    0,
+                                                    Math.min(
+                                                            255,
+                                                            255 * (1 - Math.sqrt(linear / far))));
+                    img.getRaster().setSample(xx, h - 1 - yy, 0, v);
+                }
+            ImageIO.write(img, "png", new File("screenshots/wallpaper-depth.png"));
+            System.out.println("[ANTAGON WALLPAPER] depth saved");
+        } catch (Exception e) {
+            System.err.println("[ANTAGON WALLPAPER] " + e);
+        }
+    }
+
+    private void chatSettings() {
+        if (!enabled("chat")) return;
+        try {
+            Object settings = field(mc, "field_71474_y", "gameSettings");
+            float scale = percent("chat", "scale"),
+                    width = percent("chat", "width"),
+                    lines = (Integer.parseInt(opt("chat", "lines")) * 9 - 20) / 160f;
+            float[] now = {
+                ((Number) field(settings, "field_96691_E")).floatValue(),
+                ((Number) field(settings, "field_96692_F")).floatValue(),
+                ((Number) field(settings, "field_96693_G")).floatValue()
+            };
+            if (Math.abs(now[0] - scale) + Math.abs(now[1] - width) + Math.abs(now[2] - lines)
+                    < .001f) return;
+            setField(settings, scale, "field_96691_E");
+            setField(settings, width, "field_96692_F");
+            setField(settings, lines, "field_96693_G");
+            call(
+                    call(
+                            field(mc, "field_71456_v", "ingameGUI"),
+                            new String[] {"func_146158_b", "getChatGUI"}),
+                    new String[] {"func_146245_b", "refreshChat"});
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    @SubscribeEvent
+    public void chat(ClientChatReceivedEvent event) {
+        Cosmetics.chat(event);
+        if (!enabled("chat")) return;
+        try {
+            Object message = field(event, "message");
+            if (message == null || ((Number) field(event, "type")).intValue() == 2) return;
+            boolean stack = flag("chat", "stack"), time = flag("chat", "time");
+            if (!stack && !time) return;
+            String text =
+                    (String) call(message, new String[] {"func_150254_d", "getFormattedText"});
+            if (stack && text.equals(lastChat)) chatCount++;
+            else {
+                lastChat = text;
+                chatCount = 1;
+                chatId++;
+            }
+            Constructor<?> component =
+                    Class.forName("net.minecraft.util.ChatComponentText")
+                            .getConstructor(String.class);
+            Object out =
+                    component.newInstance(
+                            time
+                                    ? "\u00a77["
+                                            + new SimpleDateFormat("HH:mm").format(new Date())
+                                            + "] \u00a7r"
+                                    : "");
+            call(out, new String[] {"func_150257_a", "appendSibling"}, message);
+            if (chatCount > 1)
+                call(
+                        out,
+                        new String[] {"func_150257_a", "appendSibling"},
+                        component.newInstance(" \u00a77(x" + chatCount + ")"));
+            Object chatGui =
+                    call(
+                            field(mc, "field_71456_v", "ingameGUI"),
+                            new String[] {"func_146158_b", "getChatGUI"});
+            call(
+                    chatGui,
+                    new String[] {"func_146234_a", "printChatMessageWithOptionalDeletion"},
+                    out,
+                    stack ? chatId : 0);
+            event.setCanceled(true);
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    @SubscribeEvent
+    public void cosmeticsTabBefore(RenderGameOverlayEvent.Pre event) {
+        if (event.type == RenderGameOverlayEvent.ElementType.PLAYER_LIST) Cosmetics.tab(mc, true);
+    }
+
+    @SubscribeEvent
+    public void cosmeticsTabAfter(RenderGameOverlayEvent.Post event) {
+        if (event.type == RenderGameOverlayEvent.ElementType.PLAYER_LIST) Cosmetics.tab(mc, false);
+    }
+
+    private void radioPlay() {
+        Spotify.play(config.getProperty("radio.uri"));
+    }
+
+    private void radioToggle() {
+        if (radioState.equals("off") || radioState.equals("stopped")) radioPlay();
+        else Spotify.playPause();
+    }
+
+    private void radioLoop() {
+        int off = 0;
+        while (true) {
+            try {
+                if (smokeConfig) {
+                    Thread.sleep(1000);
+                    continue;
+                }
+                if (enabled("radio")) {
+                    off = 0;
+                    String[] p = Spotify.status();
+                    if (p.length >= 7 && System.currentTimeMillis() - volumeSentAt > 2500)
+                        radioVolume = (int) Spotify.number(p[6]);
+                    if (p.length >= 6) {
+                        radioTitle = p[1];
+                        radioArtist = p[2];
+                        radioPos = Spotify.number(p[4]);
+                        radioDur = Spotify.number(p[5]) / 1000f;
+                        radioStamp = System.currentTimeMillis();
+                        radioState = p[0];
+                        if (!p[3].equals(radioArt)) {
+                            radioArt = p[3];
+                            loadArt(p[3]);
+                        }
+                    } else {
+                        radioState = p[0].isEmpty() ? "off" : p[0];
+                        radioTitle = "";
+                    }
+                } else if (++off == 2 && !radioState.equals("off")) {
+                    Spotify.pause(radioState.equals("playing"));
+                    radioState = "off";
+                    radioTitle = "";
+                }
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                return;
+            } catch (Exception ignored) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+    }
+
+    private void loadArt(String url) {
+        try {
+            BufferedImage src =
+                    url.startsWith("https://")
+                            ? ImageIO.read(new URL(url))
+                            : Spotify.isArt(url) ? ImageIO.read(new File(url)) : null;
+            if (src == null) {
+                artPending = null;
+                return;
+            }
+            if (src == null) return;
+            BufferedImage img = new BufferedImage(64, 64, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = img.createGraphics();
+            g.setRenderingHint(
+                    RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(src, 0, 0, 64, 64, null);
+            g.dispose();
+            artPending = img;
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void uploadArt() {
+        BufferedImage img = artPending;
+        if (img == null) return;
+        artPending = null;
+        ByteBuffer pixels = BufferUtils.createByteBuffer(64 * 64 * 4);
+        for (int y = 0; y < 64; y++)
+            for (int x = 0; x < 64; x++) {
+                int p = img.getRGB(x, y);
+                pixels.put((byte) (p >> 16))
+                        .put((byte) (p >> 8))
+                        .put((byte) p)
+                        .put((byte) (p >> 24));
+            }
+        pixels.flip();
+        if (artTexture == 0) artTexture = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, artTexture);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        GL11.glTexImage2D(
+                GL11.GL_TEXTURE_2D,
+                0,
+                GL11.GL_RGBA,
+                64,
+                64,
+                0,
+                GL11.GL_RGBA,
+                GL11.GL_UNSIGNED_BYTE,
+                pixels);
+    }
+
+    private String fit(String s, float max) {
+        if (width(s) <= max) return s;
+        while (s.length() > 1 && width(s + "...") > max) s = s.substring(0, s.length() - 1);
+        return s + "...";
+    }
+
+    private void radioOverlay(float sw, float sh) {
+        float w = 160, h = 44;
+        boolean art = flag("radio", "art");
+        place("radio", w, h, sw - w - 8, 8, sw, sh);
+        uploadArt();
+        if (flag("radio", "bg")) rect(0, 0, w, h, 0xE6121212);
+        if (flag("radio", "bar")) rect(0, 0, 2, h, RED);
+        float tx = 8;
+        if (art) {
+            if (artTexture != 0 && !radioTitle.isEmpty()) {
+                GL11.glEnable(GL11.GL_TEXTURE_2D);
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, artTexture);
+                color(0xFFFFFFFF);
+                GL11.glBegin(GL11.GL_QUADS);
+                GL11.glTexCoord2f(0, 0);
+                GL11.glVertex2f(6, 6);
+                GL11.glTexCoord2f(1, 0);
+                GL11.glVertex2f(38, 6);
+                GL11.glTexCoord2f(1, 1);
+                GL11.glVertex2f(38, 38);
+                GL11.glTexCoord2f(0, 1);
+                GL11.glVertex2f(6, 38);
+                GL11.glEnd();
+            } else rect(6, 6, 32, 32, 0xFF2A2A2A);
+            tx = 44;
+        }
+        String title = radioTitle, sub = radioArtist;
+        if (title.isEmpty()) {
+                title = "RADIO PRIMARIX";
+            sub =
+                    config.getProperty("radio.uri") == null
+                        ? "Pega una lista en el menú"
+                        : radioState.equals("off") ? "Spotify cerrado" : "Detenido";
+        }
+        text(fit(title, w - tx - 6), tx, 5, WHITE);
+        text(fit(sub, w - tx - 6), tx, 17, GRAY);
+        boolean playing = radioState.equals("playing");
+        float pos = radioPos + (playing ? (System.currentTimeMillis() - radioStamp) / 1000f : 0),
+                progress = radioDur > 0 ? Math.min(1, pos / radioDur) : 0;
+        rect(tx, 34, w - tx - 8, 2, 0xFF3A3A3A);
+        rect(tx, 34, (w - tx - 8) * progress, 2, playing ? RED : GRAY);
+        GL11.glPopMatrix();
+    }
+
+    @SubscribeEvent
+    public void attack(AttackEntityEvent event) {
+        try {
+            if (field(event, "entityPlayer") != field(mc, "field_71439_g", "thePlayer")) return;
+            if (enabled("combo")) {
+                pendingTarget = field(event, "target");
+                pendingAt = System.currentTimeMillis();
+            }
+            if (!enabled("reach")) return;
+            Object hit = field(mc, "field_71476_x", "objectMouseOver");
+            if (hit == null) return;
+            Object vec = field(hit, "field_72307_f", "hitVec");
+            if (vec == null) return;
+            Object eyes =
+                    call(
+                            field(mc, "field_71439_g", "thePlayer"),
+                            new String[] {"func_174824_e", "getPositionEyes"},
+                            1f);
+            lastReach =
+                    ((Number) call(eyes, new String[] {"func_72438_d", "distanceTo"}, vec))
+                            .doubleValue();
+            lastReachAt = System.currentTimeMillis();
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private void comboTick() {
+        if (!enabled("combo")) {
+            combo = 0;
+            pendingTarget = null;
+            return;
+        }
+        try {
+            Object player = field(mc, "field_71439_g", "thePlayer");
+            if (player == null) {
+                combo = 0;
+                return;
+            }
+            int hurt = ((Number) field(player, "field_70737_aN", "hurtTime")).intValue();
+            if (hurt > lastHurt) combo = 0;
+            lastHurt = hurt;
+            long now = System.currentTimeMillis();
+            if (pendingTarget != null) {
+                try {
+                    if (((Number) field(pendingTarget, "field_70737_aN", "hurtTime")).intValue()
+                            >= 9) {
+                        combo++;
+                        comboAt = now;
+                        pendingTarget = null;
+                    }
+                } catch (NoSuchFieldException notLiving) {
+                    pendingTarget = null;
+                }
+                if (now - pendingAt > 600) pendingTarget = null;
+            }
+            if (combo > 0 && now - comboAt > 3000) combo = 0;
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private void hitColor() {
+        if (!enabled("hitcolor")) {
+            HitColor.r = 1;
+            HitColor.g = 0;
+            HitColor.b = 0;
+            HitColor.a = .3f;
+            return;
+        }
+        int c = colorOf(opt("hitcolor", "color"));
+        HitColor.r = (c >> 16 & 255) / 255f;
+        HitColor.g = (c >> 8 & 255) / 255f;
+        HitColor.b = (c & 255) / 255f;
+        HitColor.a = percent("hitcolor", "alpha");
+    }
+
+    @SubscribeEvent
+    public void hitboxes(RenderWorldLastEvent event) {
+        if (!enabled("hitbox")) return;
+        try {
+            Object world = field(mc, "field_71441_e", "theWorld"),
+                    self = field(mc, "field_71439_g", "thePlayer");
+            if (world == null || self == null) return;
+            Object rm = call(mc, new String[] {"func_175598_ae", "getRenderManager"});
+            double vx = ((Number) field(rm, "field_78725_b", "renderPosX")).doubleValue(),
+                    vy = ((Number) field(rm, "field_78726_c", "renderPosY")).doubleValue(),
+                    vz = ((Number) field(rm, "field_78723_d", "renderPosZ")).doubleValue();
+            boolean firstPerson =
+                    ((Number)
+                                            field(
+                                                    field(mc, "field_71474_y", "gameSettings"),
+                                                    "field_74320_O",
+                                                    "thirdPersonView"))
+                                    .intValue()
+                            == 0;
+            Class<?> players = Class.forName("net.minecraft.entity.player.EntityPlayer"),
+                    living = Class.forName("net.minecraft.entity.EntityLivingBase");
+            boolean onlyPlayers = flag("hitbox", "players");
+            double margin = flag("hitbox", "margin") ? .1 : 0;
+            float pt = event.partialTicks;
+            GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+            GL11.glDisable(GL11.GL_TEXTURE_2D);
+            GL11.glDisable(GL11.GL_LIGHTING);
+            GL11.glDisable(GL11.GL_CULL_FACE);
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            GL11.glDepthMask(false);
+            GL11.glLineWidth(Integer.parseInt(opt("hitbox", "thick")));
+            color(colorOf(opt("hitbox", "color")));
+            GL11.glBegin(GL11.GL_LINES);
+            for (Object e :
+                    new ArrayList<Object>(
+                            (List<?>) field(world, "field_72996_f", "loadedEntityList"))) {
+                if (e == self && firstPerson
+                        || !(onlyPlayers ? players : living).isInstance(e)
+                        || (Boolean) call(e, new String[] {"func_82150_aj", "isInvisible"}))
+                    continue;
+                Object bb = call(e, new String[] {"func_174813_aQ", "getEntityBoundingBox"});
+                double ox = lerp(e, "field_70142_S", "field_70165_t", pt) - vx,
+                        oy = lerp(e, "field_70137_T", "field_70163_u", pt) - vy,
+                        oz = lerp(e, "field_70136_U", "field_70161_v", pt) - vz;
+                double[] b = {
+                    d(bb, "field_72340_a") - margin + ox,
+                    d(bb, "field_72338_b") - margin + oy,
+                    d(bb, "field_72339_c") - margin + oz,
+                    d(bb, "field_72336_d") + margin + ox,
+                    d(bb, "field_72337_e") + margin + oy,
+                    d(bb, "field_72334_f") + margin + oz
+                };
+                int[][] edges = {
+                    {0, 1, 2, 3, 1, 2},
+                    {0, 1, 2, 0, 1, 5},
+                    {0, 1, 5, 3, 1, 5},
+                    {3, 1, 2, 3, 1, 5},
+                    {0, 4, 2, 3, 4, 2},
+                    {0, 4, 2, 0, 4, 5},
+                    {0, 4, 5, 3, 4, 5},
+                    {3, 4, 2, 3, 4, 5},
+                    {0, 1, 2, 0, 4, 2},
+                    {3, 1, 2, 3, 4, 2},
+                    {0, 1, 5, 0, 4, 5},
+                    {3, 1, 5, 3, 4, 5}
+                };
+                for (int[] l : edges) {
+                    GL11.glVertex3d(b[l[0]], b[l[1]], b[l[2]]);
+                    GL11.glVertex3d(b[l[3]], b[l[4]], b[l[5]]);
+                }
+            }
+            GL11.glEnd();
+            GL11.glPopAttrib();
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private void sprint() {
+        try {
+            Object settings = field(mc, "field_71474_y", "gameSettings");
+            Object bind = field(settings, "field_151444_V", "keyBindSprint");
+            int code =
+                    ((Number) call(bind, new String[] {"func_151463_i", "getKeyCode"})).intValue();
+            if (!enabled("togglesprint")) {
+                if (sprintToggled) {
+                    sprintToggled = false;
+                    invoke(
+                            bind.getClass(),
+                            null,
+                            new String[] {"func_74510_a", "setKeyBindState"},
+                            code,
+                            false);
+                }
+                return;
+            }
+            boolean down =
+                    field(mc, "field_71462_r", "currentScreen") == null
+                            && (code < 0
+                                    ? Mouse.isButtonDown(code + 100)
+                                    : code > 0 && Keyboard.isKeyDown(code));
+            if (down && !sprintWas) sprintToggled = !sprintToggled;
+            sprintWas = down;
+            if (sprintToggled)
+                invoke(
+                        bind.getClass(),
+                        null,
+                        new String[] {"func_74510_a", "setKeyBindState"},
+                        code,
+                        true);
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    @SubscribeEvent
+    public void frame(TickEvent.RenderTickEvent event) {
+        try {
+            Object player = field(mc, "field_71439_g", "thePlayer");
+            boolean start = event.phase == TickEvent.Phase.START;
+
+            if (player != null && enabled("nohurtcam")) {
+                if (start) {
+                    savedHurt = ((Number) field(player, "field_70737_aN", "hurtTime")).intValue();
+                    setField(player, 0, "field_70737_aN", "hurtTime");
+                } else if (savedHurt > 0) {
+                    setField(player, savedHurt, "field_70737_aN", "hurtTime");
+                    savedHurt = 0;
+                }
+            }
+
+            if (start && enabled("notitles")) {
+                Object gui = field(mc, "field_71456_v", "ingameGUI");
+                call(gui, new String[] {"func_175178_a", "displayTitle"}, null, null, -1, -1, -1);
+                if (flag("notitles", "actionbar"))
+                    setField(gui, 0, "field_73845_h", "recordPlayingUpFor");
+            }
+            perspective(player, start);
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private void perspective(Object player, boolean start) throws Exception {
+        Object settings = field(mc, "field_71474_y", "gameSettings");
+        if (start) {
+            boolean want = false;
+            if (player != null && (enabled("perspective") || smokeLook)) {
+                boolean down = false;
+                if (field(mc, "field_71462_r", "currentScreen") == null) {
+                    int k = keyOf("perspective", "key");
+                    down = isDown(k);
+                }
+                if (opt("perspective", "mode").equals("alternar") || smokeLook) {
+                    if (down && !lookKeyWas) lookToggled = !lookToggled;
+                    want = lookToggled || smokeLook;
+                } else want = down;
+                lookKeyWas = down;
+            } else lookToggled = false;
+            if (want && !looking) {
+                looking = true;
+                camYaw = getF(player, YAW);
+                camPitch = getF(player, PITCH);
+                savedView =
+                        ((Number) field(settings, "field_74320_O", "thirdPersonView")).intValue();
+                setField(settings, 1, "field_74320_O", "thirdPersonView");
+            }
+            if (!want && looking) {
+                looking = false;
+                setField(settings, savedView, "field_74320_O", "thirdPersonView");
+            }
+            if (looking) {
+                savedYaw = getF(player, YAW);
+                savedPitch = getF(player, PITCH);
+                savedPrevYaw = getF(player, PREV_YAW);
+                savedPrevPitch = getF(player, PREV_PITCH);
+                setF(player, YAW, camYaw);
+                setF(player, PREV_YAW, camYaw);
+                setF(player, PITCH, camPitch);
+                setF(player, PREV_PITCH, camPitch);
+            }
+        } else if (looking && player != null) {
+            camYaw = getF(player, YAW);
+            camPitch = Math.max(-90, Math.min(90, getF(player, PITCH)));
+            setF(player, YAW, savedYaw);
+            setF(player, PITCH, savedPitch);
+            setF(player, PREV_YAW, savedPrevYaw);
+            setF(player, PREV_PITCH, savedPrevPitch);
+        }
+    }
+
+    private void shot(String name) throws Exception {
+        Object framebuffer = call(mc, new String[] {"func_147110_a", "getFramebuffer"});
+        int w = ((Number) field(mc, "field_71443_c", "displayWidth")).intValue(),
+                h = ((Number) field(mc, "field_71440_d", "displayHeight")).intValue();
+        invoke(
+                Class.forName("net.minecraft.util.ScreenShotHelper"),
+                null,
+                new String[] {"func_148259_a", "saveScreenshot"},
+                new File("."),
+                name,
+                w,
+                h,
+                framebuffer);
+        System.out.println("[ANTAGON TEST] Screenshot saved " + name);
+    }
+
+    private void clickMenuButton(Object screen, int id) throws Exception {
+        @SuppressWarnings("unchecked")
+        List<Object> buttons = (List<Object>) field(screen, "field_146292_n", "buttonList");
+        for (Object button : buttons) {
+            if (((Number) field(button, "field_146127_k", "id")).intValue() != id) continue;
+            int x = ((Number) field(button, "field_146128_h", "xPosition")).intValue();
+            int y = ((Number) field(button, "field_146129_i", "yPosition")).intValue();
+            call(screen, new String[] {"func_73864_a", "mouseClicked"}, x + 4, y + 4, 0);
+            return;
+        }
+        throw new IllegalStateException("No se encontró el botón del selector: " + id);
+    }
+
+    private void assertProfileRequest(String expected) throws IOException {
+        String actual = new String(Files.readAllBytes(PROFILE_REQUEST.toPath()), StandardCharsets.UTF_8);
+        if (!expected.equals(actual))
+            throw new IllegalStateException("Solicitud de perfil incorrecta: " + actual);
+    }
+
+    private void smoke() {
+        try {
+            if (!smokeStarted && smokeTicks == 35) shot("antagon-title-buttons.png");
+            if (!smokeStarted && smokeTicks == 36) {
+                @SuppressWarnings("unchecked")
+                List<Object> buttons =
+                        (List<Object>)
+                                field(
+                                        field(mc, "field_71462_r", "currentScreen"),
+                                        "field_146292_n",
+                                        "buttonList");
+                boolean found = false;
+                for (Object button : buttons)
+                    if (((Number) field(button, "field_146127_k", "id")).intValue()
+                            == ACCOUNTS_BUTTON_ID) found = true;
+                if (!found && smokeTicks < 45) smokeTicks--;
+                else if (!found)
+                    throw new IllegalStateException(
+                            "Falta el acceso Cuentas / Nick del menú principal.");
+                else System.out.println("[ANTAGON TEST] Main menu accounts button is visible");
+            }
+            if (!smokeStarted && smokeTicks == 37) {
+                Files.write(
+                        PROFILE_SNAPSHOT.toPath(),
+                        "SmokeMain\noffline\nSmokeAlt\nSmokeWrong\n@premium:SmokePremium\n"
+                                .getBytes(StandardCharsets.UTF_8));
+                syncLocalProfile(true);
+                if (!"SmokeMain".equals(Cosmetics.localAlias()))
+                    throw new IllegalStateException("No se cargó el nick activo para el alias local.");
+                Object screen = field(mc, "field_71462_r", "currentScreen");
+                clickMenuButton(screen, ACCOUNTS_BUTTON_ID);
+                if (field(mc, "field_71462_r", "currentScreen") != screen || !profileSelectorOpen)
+                    throw new IllegalStateException("El selector de perfiles no se abrió dentro del menú principal.");
+                clickMenuButton(screen, PROFILE_ADD_OFFLINE_ID);
+                for (char character : "SmokeNick".toCharArray())
+                    if (!handleProfileSelectorKey(screen, 0, character))
+                        throw new IllegalStateException("El campo de nick no aceptó entrada del teclado.");
+                if (!"SmokeNick".equals(profileInput))
+                    throw new IllegalStateException("El campo de nick no conservó el texto escrito.");
+                if (!handleProfileSelectorKey(screen, Keyboard.KEY_RETURN, (char) 0))
+                    throw new IllegalStateException("El campo de nick no aceptó Enter para guardarlo.");
+                assertProfileRequest("profile\tadd\tSmokeNick");
+                Files.delete(PROFILE_REQUEST.toPath());
+
+                refreshProfileSnapshot(true);
+                refreshProfileSelectorButtons(screen);
+                int offlineIndex = -1;
+                for (int i = 0; i < profileSelectorEntries.size(); i++)
+                    if (profileSelectorEntries.get(i).command.equals("select")
+                            && profileSelectorEntries.get(i).nickname.equals("SmokeWrong"))
+                        offlineIndex = i;
+                if (offlineIndex < 0)
+                    throw new IllegalStateException("El nick Offline guardado no aparece para eliminarlo.");
+                clickMenuButton(screen, PROFILE_REMOVE_ID + offlineIndex);
+                assertProfileRequest("profile\tremove\tSmokeWrong");
+                Files.delete(PROFILE_REQUEST.toPath());
+
+                refreshProfileSelectorButtons(screen);
+                clickMenuButton(screen, PROFILE_ITEM_ID);
+                assertProfileRequest("profile\tselect\tSmokeAlt");
+                Files.delete(PROFILE_REQUEST.toPath());
+
+                clickMenuButton(screen, ACCOUNTS_BUTTON_ID);
+                refreshProfileSnapshot(true);
+                refreshProfileSelectorButtons(screen);
+                int premiumIndex = -1;
+                for (int i = 0; i < profileSelectorEntries.size(); i++)
+                    if (profileSelectorEntries.get(i).command.equals("premium-select")
+                            && profileSelectorEntries.get(i).nickname.equals("SmokePremium"))
+                        premiumIndex = i;
+                if (premiumIndex < 0)
+                    throw new IllegalStateException("La cuenta Premium guardada no aparece en el selector.");
+                clickMenuButton(screen, PROFILE_ITEM_ID + premiumIndex);
+                assertProfileRequest("profile\tpremium-select\tSmokePremium");
+                Files.delete(PROFILE_REQUEST.toPath());
+
+                clickMenuButton(screen, ACCOUNTS_BUTTON_ID);
+                clickMenuButton(screen, PROFILE_ADD_MICROSOFT_ID);
+                assertProfileRequest("profile\tpremium\t");
+                Files.delete(PROFILE_REQUEST.toPath());
+
+                profileSelectorOpen = true;
+                refreshProfileSelectorButtons(screen);
+                premiumIndex = -1;
+                for (int i = 0; i < profileSelectorEntries.size(); i++)
+                    if (profileSelectorEntries.get(i).command.equals("premium-select")
+                            && profileSelectorEntries.get(i).nickname.equals("SmokePremium"))
+                        premiumIndex = i;
+                if (premiumIndex < 0)
+                    throw new IllegalStateException("No se pudo recuperar la fila Premium para quitarla.");
+                clickMenuButton(screen, PROFILE_REMOVE_ID + premiumIndex);
+                assertProfileRequest("profile\tpremium-remove\tSmokePremium");
+                Files.delete(PROFILE_REQUEST.toPath());
+
+                Files.write(
+                        PROFILE_SNAPSHOT.toPath(),
+                        "SmokeAlt\noffline\nSmokeMain\n@premium:SmokePremium\n"
+                                .getBytes(StandardCharsets.UTF_8));
+                syncLocalProfile(true);
+                if (!"SmokeAlt".equals(Cosmetics.localAlias()))
+                    throw new IllegalStateException(
+                            "El nick seleccionado no cambió inmediatamente en el cliente.");
+                Object session = field(mc, "field_71449_j", "session");
+                String sessionNickname =
+                        (String) call(session, new String[] {"func_111285_a", "getUsername"});
+                if (!"SmokeAlt".equals(sessionNickname))
+                    throw new IllegalStateException(
+                            "Minecraft seguirá conectándose con el nick anterior.");
+                String sessionUuid =
+                        (String) call(session, new String[] {"func_148255_b", "getPlayerID"});
+                if (!LocalIdentity.offlineUuid("SmokeAlt").equals(sessionUuid))
+                    throw new IllegalStateException(
+                            "Minecraft conservará el UUID Offline del nick anterior.");
+                if (new File("antagon-profile-restart.txt").exists())
+                    throw new IllegalStateException("El cambio visual no debe cerrar Minecraft.");
+                profileSelectorOpen = false;
+                refreshProfileSelectorButtons(screen);
+                System.out.println(
+                        "[ANTAGON TEST] Inline profile selector adds offline nicks, selects/removes Premium accounts, and updates Offline session without restart");
+            }
+            if (!smokeStarted && ++smokeTicks > 80) {
+                smokeStarted = true;
+                Class<?> ws = Class.forName("net.minecraft.world.WorldSettings");
+                Class<?> mode = Class.forName("net.minecraft.world.WorldSettings$GameType");
+                Class<?> wt = Class.forName("net.minecraft.world.WorldType");
+                Object creative = Enum.valueOf((Class) mode, "CREATIVE");
+                Field flat = wt.getDeclaredField("field_77138_c");
+                flat.setAccessible(true);
+                Object options =
+                        ws.getConstructor(long.class, mode, boolean.class, boolean.class, wt)
+                                .newInstance(42L, creative, false, false, flat.get(null));
+                call(
+                        mc,
+                        new String[] {"func_71371_a", "launchIntegratedServer"},
+                        "Antagon-Smoke",
+                        "Antagon - Smoke",
+                        options);
+                System.out.println("[ANTAGON TEST] Started local world");
+            }
+            if (field(mc, "field_71439_g", "thePlayer") == null) return;
+            switch (++worldTicks) {
+                case 1:
+                    {
+                        Object player = field(mc, "field_71439_g", "thePlayer");
+                        Class<?> effectClass = Class.forName("net.minecraft.potion.PotionEffect");
+                        Object effect = null;
+                        int[] potionIds = {17, 1, 5, 8, 11, 12};
+                        for (int i = 0; i < potionIds.length; i++) {
+                            Object activeEffect =
+                                    effectClass
+                                            .getConstructor(int.class, int.class, int.class)
+                                            .newInstance(potionIds[i], 2400, i % 3);
+                            call(
+                                    player,
+                                    new String[] {"func_70690_d", "addPotionEffect"},
+                                    activeEffect);
+                            if (potionIds[i] == 5) effect = activeEffect;
+                        }
+                        int icon = potionIconIndex(effect);
+                        String duration = potionDuration(effect);
+                        if (icon < 0 || icon >= 32 || !duration.equals("2:00"))
+                            throw new IllegalStateException(
+                                    "El icono o temporizador compacto de efectos no se pudo preparar.");
+                        System.out.println(
+                                "[ANTAGON TEST] Six compact potion icons "
+                                        + icon
+                                        + " and 2:00 timers ready");
+                    }
+                    break;
+                case 2:
+                    verifyRapidCooldownAttempts();
+                    break;
+                case 132:
+                    openSmokeInventory(mc);
+                    break;
+                case 134:
+                    shot("antagon-inventory-font.png");
+                    break;
+                case 135:
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    break;
+                case 130:
+                    shot("antagon-effects-compact.png");
+                    break;
+                case 140:
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            1,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    break;
+                case 145:
+                    shot("antagon-cape-test.png");
+                    break;
+                case 150:
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            0,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    break;
+                case 160:
+                    call(
+                            mc,
+                            new String[] {"func_147108_a", "displayGuiScreen"},
+                            Class.forName("net.minecraft.client.gui.GuiIngameMenu").newInstance());
+                    break;
+                case 165:
+                    shot("antagon-pause-buttons.png");
+                    break;
+                case 166:
+                    {
+                        Object screen = field(mc, "field_71462_r", "currentScreen");
+                        @SuppressWarnings("unchecked")
+                        List<Object> buttons =
+                                (List<Object>) field(screen, "field_146292_n", "buttonList");
+                        for (Object button : buttons)
+                                if (((Number) field(button, "field_146127_k", "id")).intValue()
+                                    == FRIENDS_BUTTON_ID) {
+                                int x =
+                                        ((Number) field(button, "field_146128_h", "xPosition"))
+                                                .intValue();
+                                int y =
+                                        ((Number) field(button, "field_146129_i", "yPosition"))
+                                                .intValue();
+                                call(
+                                        screen,
+                                        new String[] {"func_73864_a", "mouseClicked"},
+                                        x + 10,
+                                        y + 10,
+                                        0);
+                                break;
+                            }
+                    }
+                    break;
+                case 167:
+                    {
+                        Object open = field(mc, "field_71462_r", "currentScreen");
+                        if (!(open instanceof Hub) || !((Hub) open).tab.equals("friends"))
+                            throw new IllegalStateException(
+                                    "O botão de amigos não abriu o painel social no jogo");
+                        System.out.println("[ANTAGON TEST] Friends button opened the in-game Hub");
+                    }
+                    break;
+                case 170:
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    break;
+                case 180:
+                    shot("antagon-smoke.png");
+                    break;
+                case 190:
+                    smokeConfig = true;
+                    openMenu();
+                    break;
+                case 210:
+                    shot("antagon-menu.png");
+                    break;
+                case 211:
+                    menu.scroll =
+                            menu.scrollTarget =
+                                    MenuLayout.maxScroll(menu.visibleMods.length, menu.ph());
+                    break;
+                case 214:
+                    shot("antagon-menu-bottom.png");
+                    menu.setCategory(2);
+                    break;
+                case 220:
+                    shot("antagon-menu-pvp.png");
+                    menu.page = "crosshair";
+                    break;
+                case 230:
+                    shot("antagon-options.png");
+                    break;
+                case 232:
+                    if (menu != null) {
+                        menu.page = null;
+                        menu.editing = true;
+                    }
+                    break;
+                case 246:
+                    menu.drag = "fps";
+                    menu.dx = 0;
+                    menu.dy = 0;
+                    menu.func_146273_a(203, 101, 0, 0);
+                    break;
+                case 250:
+                    shot("antagon-edit.png");
+                    break;
+                case 252:
+                    if (menu != null) menu.close();
+                    smokeLook = true;
+                    break;
+                case 262:
+                    setF(
+                            field(mc, "field_71439_g", "thePlayer"),
+                            YAW,
+                            getF(field(mc, "field_71439_g", "thePlayer"), YAW) + 120);
+                    break;
+                case 280:
+                    shot("antagon-perspective.png");
+                    break;
+                case 282:
+                    smokeLook = false;
+                    break;
+                case 300:
+                    shot("antagon-after-perspective.png");
+                    break;
+                case 304:
+                    config.setProperty("autotext", "true");
+                    config.setProperty("autotext.1.text", "Antagon auto text ok");
+                    config.setProperty("autotext.1.key", "MOUSE5");
+                    config.setProperty("autotext.2.text", "/gamemode 1");
+                    boundKey(-96);
+                    openMenu();
+                    menu.page = "autotext";
+                    menu.typing = "2";
+                    break;
+                case 316:
+                    shot("antagon-autotext.png");
+                    menu.close();
+                    break;
+                case 320:
+                    smokeConfig = true;
+                    config.setProperty("crosshair", "true");
+                    config.setProperty("fps.size", "150%");
+                    config.setProperty("chat", "true");
+                    config.setProperty("chat.time", "on");
+                    config.setProperty("chat.transparent", "on");
+                    config.setProperty("notitles", "true");
+                    for (int i = 0; i < 3; i++)
+                        MinecraftForge.EVENT_BUS.post(
+                                (net.minecraftforge.fml.common.eventhandler.Event)
+                                        ClientChatReceivedEvent.class
+                                                .getConstructor(
+                                                        byte.class,
+                                                        Class.forName(
+                                                                "net.minecraft.util.IChatComponent"))
+                                                .newInstance(
+                                                        (byte) 0,
+                                                        Class.forName(
+                                                                        "net.minecraft.util.ChatComponentText")
+                                                                .getConstructor(String.class)
+                                                                .newInstance("Antagon chat test")));
+                    call(
+                            field(mc, "field_71456_v", "ingameGUI"),
+                            new String[] {"func_175178_a", "displayTitle"},
+                            "TITULO",
+                            null,
+                            10,
+                            70,
+                            20);
+                    break;
+                case 330:
+                    if (!Hooks.transparentChatBackground)
+                        throw new IllegalStateException("El fondo del chat no está desactivado.");
+                    System.out.println("[ANTAGON TEST] Chat background is transparent");
+                    shot("antagon-new-mods.png");
+                    break;
+                case 340:
+                    config.setProperty("reach", "true");
+                    lastReach = 2.87;
+                    lastReachAt = System.currentTimeMillis() + 60000;
+                    config.setProperty("radio", "true");
+                    config.setProperty("radio.size", "125%");
+                    radioTitle = "Música de prueba con un nombre bastante largo";
+                    radioArtist = "Primarix Client";
+                    radioState = "playing";
+                    radioDur = 200;
+                    radioPos = 80;
+                    radioStamp = System.currentTimeMillis();
+                    openMenu();
+                    menu.editing = true;
+                    break;
+                case 360:
+                    shot("antagon-radio.png");
+                    break;
+                case 362:
+                    menu.editing = false;
+                    menu.page = "radio";
+                    break;
+                case 378:
+                    menu.binding = "radio.next";
+                    menu.func_73864_a(0, 0, 4);
+                    System.out.println(
+                            "[ANTAGON TEST] mouse bind "
+                                    + config.getProperty("radio.next")
+                                    + " -> "
+                                    + keyOf("radio", "next"));
+                    break;
+                case 380:
+                    shot("antagon-radio-menu.png");
+                    break;
+                case 382:
+                    menu.close();
+                    config.setProperty("combo", "true");
+                    config.setProperty("hitbox", "true");
+                    config.setProperty("hitcolor", "true");
+                    config.setProperty("hitcolor.color", "ciano");
+                    config.setProperty("hitcolor.alpha", "60%");
+                    combo = 3;
+                    comboAt = System.currentTimeMillis() + 60000;
+                    {
+                        final Object self = field(mc, "field_71439_g", "thePlayer");
+                        final Object server =
+                                call(mc, new String[] {"func_71401_C", "getIntegratedServer"});
+                        final double px = d(self, "field_70165_t"),
+                                py = d(self, "field_70163_u"),
+                                pz = d(self, "field_70161_v");
+                        call(
+                                server,
+                                new String[] {"func_152344_a", "addScheduledTask"},
+                                (Runnable)
+                                        () -> {
+                                            try {
+                                                Object ws =
+                                                        call(
+                                                                server,
+                                                                new String[] {
+                                                                    "func_71218_a",
+                                                                    "worldServerForDimension"
+                                                                },
+                                                                0);
+                                                Object pig =
+                                                        Class.forName(
+                                                                        "net.minecraft.entity.passive.EntityPig")
+                                                                .getConstructor(
+                                                                        Class.forName(
+                                                                                "net.minecraft.world.World"))
+                                                                .newInstance(ws);
+                                                call(
+                                                        pig,
+                                                        new String[] {
+                                                            "func_70012_b", "setLocationAndAngles"
+                                                        },
+                                                        px + 1.5,
+                                                        py,
+                                                        pz + 3.5,
+                                                        0f,
+                                                        0f);
+                                                call(
+                                                        ws,
+                                                        new String[] {
+                                                            "func_72838_d", "spawnEntityInWorld"
+                                                        },
+                                                        pig);
+                                            } catch (Exception e) {
+                                                report(e);
+                                            }
+                                        });
+                    }
+                    break;
+                case 384:
+                case 386:
+                case 388:
+                case 390:
+                case 392:
+                case 394:
+                case 396:
+                case 398:
+                case 400:
+                    {
+                        Object self = field(mc, "field_71439_g", "thePlayer"), target = null;
+                        double best = 400;
+                        for (Object e :
+                                (List<?>)
+                                        field(
+                                                field(mc, "field_71441_e", "theWorld"),
+                                                "field_72996_f",
+                                                "loadedEntityList")) {
+                            if (e == self
+                                    || !Class.forName("net.minecraft.entity.EntityLivingBase")
+                                            .isInstance(e)) continue;
+                            double dx = d(e, "field_70165_t") - d(self, "field_70165_t"),
+                                    dz = d(e, "field_70161_v") - d(self, "field_70161_v");
+                            if (dx * dx + dz * dz < best) {
+                                best = dx * dx + dz * dz;
+                                target = e;
+                            }
+                        }
+                        if (target != null) {
+                            double dx = d(target, "field_70165_t") - d(self, "field_70165_t"),
+                                    dz = d(target, "field_70161_v") - d(self, "field_70161_v"),
+                                    dy = d(target, "field_70163_u") - d(self, "field_70163_u");
+                            setF(self, YAW, (float) Math.toDegrees(Math.atan2(-dx, dz)));
+                            setF(
+                                    self,
+                                    PITCH,
+                                    (float)
+                                            -Math.toDegrees(
+                                                    Math.atan2(dy, Math.sqrt(dx * dx + dz * dz))));
+                            setField(target, 10, "field_70737_aN", "hurtTime");
+                        }
+                        if (worldTicks == 400) shot("antagon-combat.png");
+                        break;
+                    }
+                case 404:
+                    {
+                        Object board =
+                                call(
+                                        field(mc, "field_71441_e", "theWorld"),
+                                        new String[] {"func_96441_U", "getScoreboard"});
+                        Object dummy =
+                                Class.forName("net.minecraft.scoreboard.IScoreObjectiveCriteria")
+                                        .getField("field_96641_b")
+                                        .get(null);
+                        Object objective =
+                                call(
+                                        board,
+                                        new String[] {"func_96535_a", "addScoreObjective"},
+                                        "antagon",
+                                        dummy);
+                        call(
+                                objective,
+                                new String[] {"func_96681_a", "setDisplayName"},
+                                "\u00a7e\u00a7lBED WARS");
+                        call(
+                                board,
+                                new String[] {"func_96530_a", "setObjectiveInDisplaySlot"},
+                                1,
+                                objective);
+                        String[] rows = {
+                            "\u00a77Mapa: Lighthouse",
+                            " ",
+                            "\u00a7cR \u00a7fVermelho \u00a7a\u2714",
+                            "\u00a79B \u00a7fAzul \u00a7a\u2714",
+                            "  ",
+                            "\u00a7fKills: \u00a7a3",
+                            "\u00a7eprimarix.studio"
+                        };
+                        for (int i = 0; i < rows.length; i++)
+                            call(
+                                    call(
+                                            board,
+                                            new String[] {"func_96529_a", "getValueFromObjective"},
+                                            rows[i],
+                                            objective),
+                                    new String[] {"func_96647_c", "setScorePoints"},
+                                    rows.length - i);
+                        config.setProperty("scoreboard", "true");
+                        config.setProperty("hitdelay", "true");
+                    }
+                    break;
+                case 412:
+                    shot("antagon-scoreboard.png");
+                    config.setProperty("scoreboard.bg", "off");
+                    config.setProperty("scoreboard.numbers", "off");
+                    config.setProperty("scoreboard.size", "80%");
+                    break;
+                case 420:
+                    shot("antagon-scoreboard-clean.png");
+                    System.out.println(
+                            "[ANTAGON TEST] leftClickCounter " + field(mc, "field_71429_W"));
+                    break;
+                case 430:
+                    final Object night =
+                            call(mc, new String[] {"func_71401_C", "getIntegratedServer"});
+                    call(
+                            night,
+                            new String[] {"func_152344_a", "addScheduledTask"},
+                            (Runnable)
+                                    () -> {
+                                        try {
+                                            call(
+                                                    call(
+                                                            night,
+                                                            new String[] {
+                                                                "func_71218_a",
+                                                                "worldServerForDimension"
+                                                            },
+                                                            0),
+                                                    new String[] {"func_72877_b", "setWorldTime"},
+                                                    18000L);
+                                        } catch (Exception e) {
+                                            report(e);
+                                        }
+                                    });
+                    break;
+                case 450:
+                    shot("antagon-night.png");
+                    config.setProperty("fullbright", "true");
+                    break;
+                case 460:
+                    shot("antagon-fullbright.png");
+                    config.setProperty("fullbright", "false");
+                    break;
+                case 470:
+                    System.out.println(
+                            "[ANTAGON TEST] gamma restored "
+                                    + getF(field(mc, "field_71474_y"), "field_74333_Y"));
+                    break;
+                case 480:
+                    {
+                        Object settings = field(mc, "field_71474_y");
+                        Object tab = field(settings, "field_74321_H");
+                        invoke(
+                                tab.getClass(),
+                                null,
+                                new String[] {"func_74510_a", "setKeyBindState"},
+                                ((Number) call(tab, new String[] {"func_151463_i", "getKeyCode"}))
+                                        .intValue(),
+                                true);
+                        Object board =
+                                call(
+                                        field(mc, "field_71441_e", "theWorld"),
+                                        new String[] {"func_96441_U", "getScoreboard"});
+                        call(
+                                board,
+                                new String[] {"func_96530_a", "setObjectiveInDisplaySlot"},
+                                0,
+                                call(
+                                        board,
+                                        new String[] {"func_96518_b", "getObjective"},
+                                        "antagon"));
+                        config.setProperty("scoreboard", "true");
+                        config.setProperty("scoreboard.bg", "on");
+                        config.setProperty("scoreboard.size", "100%");
+                        config.setProperty("scoreboard.numbers", "on");
+                    }
+                    break;
+                case 490:
+                    shot("antagon-tab-on.png");
+                    config.setProperty("scoreboard", "false");
+                    break;
+                case 500:
+                    shot("antagon-tab-off.png");
+                    break;
+                case 510:
+                    smokeCooldownCommand(mc, "/rmenu");
+                    break;
+                case 511:
+                    smokeCooldownScreen(
+                            mc,
+                            "com.rpgclient.cooldown.GuiRMenu",
+                            "/rmenu");
+                    break;
+                case 512:
+                    break;
+                case 513:
+                    shot("annthmodcd-rmenu.png");
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    smokeCooldownCommand(mc, "/cd");
+                    break;
+                case 514:
+                    smokeCooldownScreen(
+                            mc,
+                            "com.rpgclient.cooldown.GuiCooldownMenu",
+                            "/cd");
+                    break;
+                case 515:
+                    break;
+                case 516:
+                    shot("annthmodcd-cd-menu.png");
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    smokeCooldownCommand(mc, "/cd gui");
+                    break;
+                case 517:
+                    smokeCooldownScreen(
+                            mc,
+                            "com.rpgclient.cooldown.GuiHudLayoutEditor",
+                            "/cd gui");
+                    verifyCooldownHudBounds(mc);
+                    break;
+                case 518:
+                    shot("annthmodcd-layout-editor.png");
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    equipSmokeArmor(mc);
+                    equipSmokeCooldownItem(mc);
+                    smokeCooldownCommand(mc, "/cd smoke_test");
+                    verifyCooldownSave();
+                    smokeCooldownCommand(mc, "/hand on");
+                    smokeCooldownCommand(mc, "/armor");
+                    verifyCooldownHudEnabled();
+                    break;
+                case 519:
+                    break;
+                case 520:
+                    shot("annthmodcd-hud.png");
+                    System.out.println(
+                            "[ANTAGON TEST] AnnthModCD original menu, cooldown menu, layout editor and HUD opened");
+                    break;
+                case 590:
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            1,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    break;
+                case 600:
+                    shot("antagon-cape-late.png");
+                    break;
+                case 610:
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            0,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    break;
+                case 620:
+                    {
+                        Object player = field(mc, "field_71439_g", "thePlayer");
+                        Object profile =
+                                call(player, new String[] {"func_146103_bH", "getGameProfile"});
+                        String uuid =
+                                call(profile, new String[] {"getId"}).toString().replace("-", "");
+                        BufferedImage texture =
+                                new BufferedImage(1024, 512, BufferedImage.TYPE_INT_ARGB);
+                        java.awt.Graphics2D g = texture.createGraphics();
+                        g.setColor(new java.awt.Color(0x14285A));
+                        g.fillRect(0, 0, 352, 272);
+                        g.setColor(new java.awt.Color(0x2A5BD7));
+                        g.fillRect(16, 16, 160, 256);
+                        g.setColor(java.awt.Color.WHITE);
+                        g.setFont(new java.awt.Font("SansSerif", java.awt.Font.BOLD, 44));
+                        g.drawString("TESTE", 26, 150);
+                        g.dispose();
+                        new File("antagon-capes").mkdirs();
+                        ImageIO.write(
+                                texture,
+                                "png",
+                                new File("antagon-capes/custom_0123456789abcdef.png"));
+                        Files.write(
+                                new File("antagon-cosmetics.properties").toPath(),
+                                (uuid
+                                                + "=client,cape:custom_0123456789abcdef,hat:antagon_crown,admin\n")
+                                        .getBytes(StandardCharsets.UTF_8));
+                        setField(
+                                field(mc, "field_71474_y", "gameSettings"),
+                                1,
+                                "field_74320_O",
+                                "thirdPersonView");
+                        config.setProperty("fullbright", "true");
+                    }
+                    break;
+                case 640:
+                    shot("antagon-logo-cape.png");
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            2,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    break;
+                case 645:
+                    shot("antagon-crown.png");
+                    config.setProperty("fullbright", "false");
+                    setField(
+                            field(mc, "field_71474_y", "gameSettings"),
+                            0,
+                            "field_74320_O",
+                            "thirdPersonView");
+                    call(
+                            mc,
+                            new String[] {"func_147108_a", "displayGuiScreen"},
+                            Class.forName("net.minecraft.client.gui.GuiIngameMenu").newInstance());
+                    break;
+                case 650:
+                    shot("antagon-pause.png");
+                    {
+                        String friend = "11111111-2222-3333-4444-555555555555";
+                        String state =
+                                "updated="
+                                        + System.currentTimeMillis()
+                                        + "\nonline=1\nme=AntagonTest\nnotice=\n"
+                                        + "friend="
+                                        + friend
+                                        + "\tAmigoTeste\t1\tserver\tmc.hypixel.net\t0\n"
+                                        + "friend=99999999-2222-3333-4444-555555555555"
+                                        + "\tOfflineTeste\t0\toffline\t\t0\n"
+                                        + "incoming=88888888-2222-3333-4444-555555555555\tNovato\n"
+                                        + "chat="
+                                        + friend
+                                        + "\n"
+                                        + "msg=0\t19:02\tbora um bedwars?\n"
+                                        + "msg=1\t19:03\tbora! me chama no servidor\n"
+                                        + "call=active\t0\tAntagonTest\n"
+                                        + "callpeer=00000000-0000-4000-8000-000000000000"
+                                        + "\tAntagonTest\n"
+                                        + "callpeer="
+                                        + friend
+                                        + "\tAmigoTeste\n"
+                                        + "balance=250\n"
+                                        + "item=antagon_cape\tCapa Primarix\t100\t0\t0\t1\tcape\n"
+                                        + "item=antagon_logo_cape\tCapa Logo Primarix\t100\t1\t0\t0"
+                                        + "\tcape\n"
+                                        + "item=antagon_crown\tCoroa Primarix\t250\t1\t1\t1\that\n"
+                                        + "item=custom_0123456789abcdef\tCapa Teste\t0\t1\t1\t0"
+                                        + "\tcape\n";
+                        Files.write(
+                                new File("antagon-ui-state.txt").toPath(),
+                                state.getBytes(StandardCharsets.UTF_8));
+                        Hub hub = new Hub(null, "friends");
+                        hub.chat = friend;
+                        smokeHub = hub;
+                        call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, hub);
+                    }
+                    break;
+                case 660:
+                    shot("antagon-hub-friends.png");
+                    break;
+                case 670:
+                    smokeHub.tab = "friends";
+                    break;
+                case 673:
+                    Files.write(
+                            new File("antagon-notify-" + System.currentTimeMillis() + "0000.txt")
+                                    .toPath(),
+                            "accepted\tAmigoTeste\taceitou seu pedido de amizade"
+                                    .getBytes(StandardCharsets.UTF_8));
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    break;
+                case 675:
+                    {
+                        final Object self = field(mc, "field_71439_g", "thePlayer");
+                        final Object server =
+                                call(mc, new String[] {"func_71401_C", "getIntegratedServer"});
+                        float yaw = getF(self, YAW);
+                        final double
+                                ix = d(self, "field_70165_t") - Math.sin(Math.toRadians(yaw)) * 1.6,
+                                iy = d(self, "field_70163_u") + 0.5,
+                                iz = d(self, "field_70161_v") + Math.cos(Math.toRadians(yaw)) * 1.6;
+                        call(
+                                server,
+                                new String[] {"func_152344_a", "addScheduledTask"},
+                                (Runnable)
+                                        () -> {
+                                            try {
+                                                Object ws =
+                                                        call(
+                                                                server,
+                                                                new String[] {
+                                                                    "func_71218_a",
+                                                                    "worldServerForDimension"
+                                                                },
+                                                                0);
+                                                Class<?>
+                                                        item =
+                                                                Class.forName(
+                                                                        "net.minecraft.item.Item"),
+                                                        stack =
+                                                                Class.forName(
+                                                                        "net.minecraft.item.ItemStack"),
+                                                        entity =
+                                                                Class.forName(
+                                                                        "net.minecraft.entity.item.EntityItem");
+                                                Object diamond =
+                                                        Class.forName("net.minecraft.init.Items")
+                                                                .getField("field_151045_i")
+                                                                .get(null);
+                                                Object gold =
+                                                        invoke(
+                                                                item,
+                                                                null,
+                                                                new String[] {
+                                                                    "func_150898_a",
+                                                                    "getItemFromBlock"
+                                                                },
+                                                                Class.forName(
+                                                                                "net.minecraft.init.Blocks")
+                                                                        .getField("field_150340_R")
+                                                                        .get(null));
+                                                Object[] drops = {
+                                                    stack.getConstructor(item, int.class)
+                                                            .newInstance(diamond, 16),
+                                                    stack.getConstructor(item, int.class)
+                                                            .newInstance(gold, 8)
+                                                };
+                                                for (int i = 0; i < drops.length; i++) {
+                                                    Object e =
+                                                            entity.getConstructor(
+                                                                            Class.forName(
+                                                                                    "net.minecraft.world.World"),
+                                                                            double.class,
+                                                                            double.class,
+                                                                            double.class,
+                                                                            stack)
+                                                                    .newInstance(
+                                                                            ws,
+                                                                            ix + i * 0.8,
+                                                                            iy,
+                                                                            iz,
+                                                                            drops[i]);
+                                                    setField(
+                                                            e,
+                                                            32767,
+                                                            "field_145804_b",
+                                                            "delayBeforeCanPickup");
+                                                    call(
+                                                            ws,
+                                                            new String[] {
+                                                                "func_72838_d", "spawnEntityInWorld"
+                                                            },
+                                                            e);
+                                                }
+                                            } catch (Exception e) {
+                                                report(e);
+                                            }
+                                        });
+                        config.setProperty("itemphysics", "true");
+                        config.setProperty("fullbright", "true");
+                        setF(self, PITCH, 60f);
+                    }
+                    break;
+                case 690:
+                    shot("antagon-notice.png");
+                    break;
+                case 695:
+                    shot("antagon-item-physics.png");
+                    break;
+                case 700:
+                    call(mc, new String[] {"func_71400_g", "shutdown"});
+                    break;
+            }
+            if (worldTicks % 100 == 0)
+                System.out.println(
+                        "[ANTAGON TEST] FPS "
+                                + invoke(
+                                        minecraft,
+                                        null,
+                                        new String[] {"func_175610_ah", "getDebugFPS"}));
+        } catch (Throwable e) {
+            System.err.println("[ANTAGON TEST] " + e);
+            e.printStackTrace();
+            System.clearProperty("antagon.smoke");
+        }
+    }
+
+    private void smokeCooldownCommand(Object mc, String command) throws Exception {
+        Class<?> handlerClass = Class.forName("net.minecraftforge.client.ClientCommandHandler");
+        Object handler = handlerClass.getField("instance").get(null);
+        Object player = field(mc, "field_71439_g", "thePlayer");
+        invoke(
+                handlerClass,
+                handler,
+                new String[] {"executeCommand", "func_71556_a", "a"},
+                player,
+                command);
+    }
+
+    private void equipSmokeArmor(Object mc) throws Exception {
+        Object player = field(mc, "field_71439_g", "thePlayer");
+        Object inventory = field(player, "field_71071_by", "inventory");
+        Object[] armor = (Object[]) field(inventory, "field_70460_b", "armorInventory");
+        Class<?> itemsClass = Class.forName("net.minecraft.init.Items");
+        Class<?> itemClass = Class.forName("net.minecraft.item.Item");
+        Class<?> stackClass = Class.forName("net.minecraft.item.ItemStack");
+        Object helmet =
+                Reflect.findField(itemsClass, new String[] {"field_151028_Y", "iron_helmet"})
+                        .get(null);
+        Object stack = stackClass.getConstructor(itemClass).newInstance(helmet);
+        setField(stack, 32, "field_77991_e", "itemDamage");
+        armor[3] = stack;
+    }
+
+    private void equipSmokeCooldownItem(Object mc) throws Exception {
+        Object player = field(mc, "field_71439_g", "thePlayer");
+        Object inventory = field(player, "field_71071_by", "inventory");
+        Object[] mainInventory = (Object[]) field(inventory, "field_70462_a", "mainInventory");
+        Class<?> itemsClass = Class.forName("net.minecraft.init.Items");
+        Class<?> itemClass = Class.forName("net.minecraft.item.Item");
+        Class<?> stackClass = Class.forName("net.minecraft.item.ItemStack");
+        Object apple =
+                Reflect.findField(itemsClass, new String[] {"field_151034_e", "apple"}).get(null);
+        mainInventory[0] = stackClass.getConstructor(itemClass).newInstance(apple);
+        setField(inventory, 0, "field_70461_c", "currentItem");
+    }
+
+    private void verifyRapidCooldownAttempts() throws Exception {
+        Class<?> manager = Class.forName("com.rpgclient.cooldown.CooldownManager");
+        Class<?> categoryClass = Class.forName("com.rpgclient.cooldown.CooldownManager$Category");
+        Class<?> handler = Class.forName("com.rpgclient.cooldown.CooldownEventHandler");
+        Class<?> stackClass = Class.forName("net.minecraft.item.ItemStack");
+        Class<?> itemClass = Class.forName("net.minecraft.item.Item");
+        Object category = Enum.valueOf((Class) categoryClass, "COOLDOWN");
+        Object apple =
+                Reflect.findField(
+                                Class.forName("net.minecraft.init.Items"),
+                                new String[] {"field_151034_e", "apple"})
+                        .get(null);
+        List<String> ids = new ArrayList<String>();
+        List<Object> entries = new ArrayList<Object>();
+        List<Object> attempts =
+                (List<Object>) Reflect.findField(handler, new String[] {"pendingAttempts"}).get(null);
+        try {
+            attempts.clear();
+            for (int i = 0; i < 12; i++) {
+                String id = "RapidSmoke" + i;
+                ids.add(id);
+                Object item = stackClass.getConstructor(itemClass).newInstance(apple);
+                call(item, new String[] {"func_151001_c", "setStackDisplayName"}, id);
+                invoke(manager, null, new String[] {"register"}, category, id, 5.0D, item);
+                Object entry = invoke(manager, null, new String[] {"find"}, item);
+                if (entry == null)
+                    throw new IllegalStateException("No se encontró un item de prueba registrado.");
+                entries.add(entry);
+                invoke(
+                        handler,
+                        null,
+                        new String[] {"requestCooldown"},
+                        entry,
+                        item,
+                        i);
+            }
+            if (attempts.size() != 12)
+                throw new IllegalStateException(
+                        "Se perdieron intentos al cambiar rápido entre items: " + attempts.size());
+            invoke(handler, null, new String[] {"removeExpiredAttempts"});
+            invoke(handler, null, new String[] {"confirmPendingAttempts"}, this.mc);
+            for (Object entry : entries) {
+                if (!((Boolean) call(entry, new String[] {"isOnCooldown"})).booleanValue())
+                    throw new IllegalStateException(
+                            "Un item de prueba no recibió recarga en el mismo tick.");
+            }
+            if (!attempts.isEmpty())
+                throw new IllegalStateException("Quedaron intentos de recarga pendientes.");
+            System.out.println(
+                    "[ANTAGON TEST] Rapid item switching confirmed all 12 registered cooldowns");
+        } finally {
+            attempts.clear();
+            for (String id : ids)
+                invoke(manager, null, new String[] {"delete"}, category, id);
+        }
+    }
+
+    private void verifyCooldownSave() throws Exception {
+        Class<?> managerClass = Class.forName("com.rpgclient.cooldown.CooldownManager");
+        boolean saved =
+                ((Boolean) invoke(managerClass, null, new String[] {"wasLastSaveSuccessful"}))
+                        .booleanValue();
+        if (!saved) {
+            throw new IllegalStateException("No se guardó el cooldown de prueba en el perfil aislado.");
+        }
+        System.out.println("[ANTAGON TEST] AnnthModCD cooldown registration saved");
+    }
+
+    private void verifyCooldownHudBounds(Object mc) throws Exception {
+        Class<?> hudClass = Class.forName("com.rpgclient.cooldown.GuiCooldownInventory");
+        Class<?> resolutionClass = Class.forName("net.minecraft.client.gui.ScaledResolution");
+        Object resolution = resolutionClass.getConstructor(mc.getClass()).newInstance(mc);
+        int width =
+                        ((Number)
+                                        invoke(
+                                                resolutionClass,
+                                                resolution,
+                                                new String[] {"func_78326_a", "getScaledWidth"}))
+                                .intValue(),
+                height =
+                        ((Number)
+                                        invoke(
+                                                resolutionClass,
+                                                resolution,
+                                                new String[] {"func_78328_b", "getScaledHeight"}))
+                                .intValue(),
+                cooldownLeft =
+                        ((Number)
+                                        invoke(
+                                                hudClass,
+                                                null,
+                                                new String[] {"getCooldownLeft"},
+                                                resolution))
+                                .intValue(),
+                cooldownTop =
+                        ((Number)
+                                        invoke(
+                                                hudClass,
+                                                null,
+                                                new String[] {"getCooldownTop"},
+                                                resolution))
+                                .intValue(),
+                armorLeft =
+                        ((Number)
+                                        invoke(
+                                                hudClass,
+                                                null,
+                                                new String[] {"getArmorLeft"},
+                                                resolution))
+                                .intValue(),
+                armorTop =
+                        ((Number)
+                                        invoke(
+                                                hudClass,
+                                                null,
+                                                new String[] {"getArmorTop"},
+                                                resolution))
+                                .intValue(),
+                cooldownWidth =
+                        ((Number)
+                                        invoke(
+                                                hudClass,
+                                                null,
+                                                new String[] {"getCooldownPanelWidth"}))
+                                .intValue(),
+                cooldownHeight =
+                        ((Number)
+                                        invoke(
+                                                hudClass,
+                                                null,
+                                                new String[] {"getCooldownPanelHeight"}))
+                                .intValue(),
+                armorWidth =
+                        ((Number)
+                                        invoke(
+                                                hudClass,
+                                                null,
+                                                new String[] {"getArmorPanelWidth"}))
+                                .intValue(),
+                armorHeight =
+                        ((Number)
+                                        invoke(
+                                                hudClass,
+                                                null,
+                                                new String[] {"getArmorPanelHeight"}))
+                                .intValue();
+        if (cooldownLeft < 0
+                || cooldownTop < 0
+                || cooldownLeft + cooldownWidth > width
+                || cooldownTop + cooldownHeight > height
+                || armorLeft < 0
+                || armorTop < 0
+                || armorLeft + armorWidth > width
+                || armorTop + armorHeight > height) {
+            throw new IllegalStateException("Los paneles del HUD de cooldown/armadura quedan fuera de pantalla.");
+        }
+        System.out.println("[ANTAGON TEST] AnnthModCD HUD panels clamped to screen");
+    }
+
+    private void verifyCooldownHudEnabled() throws Exception {
+        Class<?> hudClass = Class.forName("com.rpgclient.cooldown.GuiCooldownInventory");
+        boolean cooldownEnabled =
+                ((Boolean) invoke(hudClass, null, new String[] {"isOverlayEnabled"})).booleanValue();
+        boolean armorEnabled =
+                ((Boolean) invoke(hudClass, null, new String[] {"isArmorOverlayEnabled"}))
+                        .booleanValue();
+        if (!cooldownEnabled || !armorEnabled) {
+            throw new IllegalStateException("No se activaron los paneles originales de cooldown y armadura.");
+        }
+    }
+
+    private void smokeCooldownScreen(Object mc, String expectedClass, String command) throws Exception {
+        Object screen = field(mc, "field_71462_r", "currentScreen");
+        if (!Class.forName(expectedClass).isInstance(screen)) {
+            throw new IllegalStateException(
+                    command
+                            + " no abrió "
+                            + expectedClass
+                            + "; pantalla actual: "
+                            + (screen == null ? "ninguna" : screen.getClass().getName()));
+        }
+        System.out.println("[ANTAGON TEST] AnnthModCD screen opened " + command);
+    }
+
+    private void begin(float scale) throws Exception {
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GL11.glPushMatrix();
+        GL11.glScalef(scale, scale, 1);
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GL11.glDisable(GL11.GL_CULL_FACE);
+        GL11.glDisable(GL11.GL_LIGHTING);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        font.prepare();
+    }
+
+    private void end() {
+        GL11.glPopMatrix();
+        GL11.glPopAttrib();
+        int activeTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        int boundTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        try {
+            Class<?> gl = Class.forName("net.minecraft.client.renderer.GlStateManager");
+            invoke(gl, null, new String[] {"func_179138_g", "setActiveTexture"}, activeTexture);
+            invoke(gl, null, new String[] {"func_179144_i", "bindTexture"}, boundTexture);
+        } catch (Exception error) {
+            report(error);
+        }
+    }
+
+    private void openSmokeInventory(Object mc) throws Exception {
+        Object player = field(mc, "field_71439_g", "thePlayer");
+        Class<?> inventoryScreen = Class.forName("net.minecraft.client.gui.inventory.GuiInventory");
+        Object screen =
+                inventoryScreen
+                        .getConstructor(Class.forName("net.minecraft.entity.player.EntityPlayer"))
+                        .newInstance(player);
+        call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, screen);
+        System.out.println("[ANTAGON TEST] Inventory opened for font texture-state check");
+    }
+
+    private void report(Throwable error) {
+        if (!reported) {
+            reported = true;
+            System.err.println("[ANTAGON] HUD error: " + error);
+            error.printStackTrace();
+        }
+    }
+
+    private void color(int c) {
+        GL11.glColor4f(
+                (c >> 16 & 255) / 255f, (c >> 8 & 255) / 255f, (c & 255) / 255f, (c >>> 24) / 255f);
+    }
+
+    private void rect(float x, float y, float w, float h, int c) {
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        color(c);
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glVertex2f(x, y);
+        GL11.glVertex2f(x + w, y);
+        GL11.glVertex2f(x + w, y + h);
+        GL11.glVertex2f(x, y + h);
+        GL11.glEnd();
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+    }
+
+    private void outline(float x, float y, float w, float h, int c) {
+        rect(x, y, w, 1, c);
+        rect(x, y + h - 1, w, 1, c);
+        rect(x, y, 1, h, c);
+        rect(x + w - 1, y, 1, h, c);
+    }
+
+    private float width(String text) {
+        return font.width(text);
+    }
+
+    private void scaledMenuText(String value, float x, float y, int color, float scale) {
+        GL11.glPushMatrix();
+        GL11.glTranslatef(x, y, 0f);
+        GL11.glScalef(scale, scale, 1f);
+        text(value, 0, 0, color);
+        GL11.glPopMatrix();
+    }
+
+    private void text(String text, float x, float y, int color) {
+        font.draw(text, x, y, color);
+    }
+
+    private void place(
+            String key,
+            float w,
+            float h,
+            float defaultX,
+            float defaultY,
+            float screenW,
+            float screenH) {
+        float s = percent(key, "size");
+        float x = Math.max(0, Math.min(number(key + ".x", defaultX), screenW - w * s)),
+                y = Math.max(0, Math.min(number(key + ".y", defaultY), screenH - h * s));
+        bounds.put(key, new float[] {x, y, w * s, h * s});
+        GL11.glPushMatrix();
+        GL11.glTranslatef(x, y, 0);
+        GL11.glScalef(s, s, 1);
+    }
+
+    private void panel(
+            String key,
+            String value,
+            float defaultX,
+            float defaultY,
+            float screenW,
+            float screenH) {
+        float w = width(value) + 14, h = 21;
+        place(key, w, h, defaultX, defaultY, screenW, screenH);
+        if (flag(key, "bg")) rect(0, 0, w, h, 0xCE1E1E1E);
+        if (flag(key, "bar")) rect(0, 0, 2, h, RED);
+        text(value, 7, 3, colorOf(opt(key, "color")));
+        GL11.glPopMatrix();
+    }
+
+    private String potionName(Object effect) {
+        try {
+            String key = (String) call(effect, new String[] {"func_76453_d", "getEffectName"});
+            String translated =
+                    (String)
+                            invoke(
+                                    Class.forName("net.minecraft.util.StatCollector"),
+                                    null,
+                                    new String[] {"func_74838_a", "translateToLocal"},
+                                    key);
+            if (translated != null && !translated.isEmpty() && !translated.equals(key))
+                return translated;
+            return key.startsWith("potion.") ? key.substring("potion.".length()) : key;
+        } catch (Exception ignored) {
+            return "EFECTO";
+        }
+    }
+
+    private String potionDuration(Object effect) {
+        try {
+            int ticks =
+                    ((Number) call(effect, new String[] {"func_76459_b", "getDuration"})).intValue();
+            if (ticks < 0) return "INDEF.";
+            int seconds = (ticks + 19) / 20;
+            return String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60);
+        } catch (Exception ignored) {
+            return "--:--";
+        }
+    }
+
+    private int potionIconIndex(Object effect) throws Exception {
+        int id = ((Number) call(effect, new String[] {"func_76456_a", "getPotionID"})).intValue();
+        Class<?> potionClass = Class.forName("net.minecraft.potion.Potion");
+        Object potions =
+                findField(potionClass, new String[] {"field_76425_a", "potionTypes"}).get(null);
+        if (potions == null || id < 0 || id >= Array.getLength(potions)) return -1;
+        Object potion = Array.get(potions, id);
+        if (potion == null) return -1;
+        return ((Number) call(potion, new String[] {"func_76392_e", "getStatusIconIndex"}))
+                .intValue();
+    }
+
+    private void drawPotionIcon(int iconIndex, int x, int y) throws Exception {
+        if (iconIndex < 0) return;
+        Class<?> locationClass = Class.forName("net.minecraft.util.ResourceLocation");
+        Object location =
+                locationClass.getConstructor(String.class)
+                        .newInstance("textures/gui/container/inventory.png");
+        Object textures = call(mc, new String[] {"func_110434_K", "getTextureManager"});
+        call(textures, new String[] {"func_110577_a", "bindTexture"}, location);
+        GL11.glColor4f(1f, 1f, 1f, 1f);
+        Object ingame = field(mc, "field_71456_v", "ingameGUI");
+        call(
+                ingame,
+                new String[] {"func_73729_b", "drawTexturedModalRect"},
+                x,
+                y,
+                iconIndex % 8 * 18,
+                198 + iconIndex / 8 * 18,
+                18,
+                18);
+    }
+
+    private void effectsOverlay(Object player, float sw, float sh) throws Exception {
+        Object active = call(player, new String[] {"func_70651_bq", "getActivePotionEffects"});
+        if (!(active instanceof Collection<?>)) return;
+        Collection<?> effects = (Collection<?>) active;
+        if (effects.isEmpty()) return;
+
+        int rows = Math.min(6, effects.size());
+        boolean compact = opt("effects", "style").equals("compacto");
+        boolean labels = flag("effects", "label");
+        float w = compact ? (labels ? 148 : 62) : 184;
+        float h = compact ? rows * 20 + 6 : 21 + rows * 16;
+        place("effects", w, h, sw - w - 12, 64, sw, sh);
+        try {
+            if (flag("effects", "bg")) rect(0, 0, w, h, 0xCE1E1E1E);
+            if (flag("effects", "bar")) rect(0, 0, 2, h, RED);
+            if (!compact) text("EFECTOS", 7, 4, WHITE);
+            int row = 0;
+            for (Object effect : effects) {
+                if (row >= rows) break;
+                int amplifier =
+                        ((Number) call(effect, new String[] {"func_76458_c", "getAmplifier"})).intValue()
+                                + 1;
+                amplifier = Math.max(1, amplifier);
+                String level =
+                        amplifier <= 5
+                                ? new String[] {"I", "II", "III", "IV", "V"}[amplifier - 1]
+                                : Integer.toString(amplifier);
+                if (compact) {
+                    int y = 3 + row * 20;
+                    drawPotionIcon(potionIconIndex(effect), 4, y);
+                    if (labels)
+                        text(fit(potionName(effect) + " " + level, w - 58), 26, y + 4, WHITE);
+                    String duration = potionDuration(effect);
+                    text(duration, w - width(duration) - 4, y + 4, GRAY);
+                } else {
+                    float y = 19 + row * 16;
+                    text(fit(potionName(effect) + " " + level, w - 54), 7, y, WHITE);
+                    text(potionDuration(effect), w - 45, y, GRAY);
+                }
+                row++;
+            }
+        } finally {
+            GL11.glPopMatrix();
+        }
+    }
+
+    private boolean key(String binding, int fallback) {
+        try {
+            Object settings = field(mc, "field_71474_y", "gameSettings");
+            Object k = field(settings, binding);
+            return (Boolean) call(k, new String[] {"func_151470_d", "isKeyDown"});
+        } catch (Exception e) {
+            return Keyboard.isKeyDown(fallback);
+        }
+    }
+
+    private void keycap(String label, float x, float y, float w, boolean pressed) {
+        int active = colorOf(opt("keys", "active"));
+        if (pressed) rect(x, y, w, 23, active);
+        else if (flag("keys", "bg")) rect(x, y, w, 23, 0xCE1E1E1E);
+        text(
+                label,
+                x + (w - width(label)) / 2,
+                y + 4,
+                pressed && active == COLORS[0] ? 0xFF1E1E1E : WHITE);
+    }
+
+    /** Friend notifications written by the launcher (antagon-notify-<millis><seq>.txt). */
+    private final List<String[]> notices = new ArrayList<String[]>();
+
+    private long noticeScan, noticeStart;
+
+    private void pollNotices() {
+        if (System.currentTimeMillis() - noticeScan < 500) return;
+        noticeScan = System.currentTimeMillis();
+        File[] files =
+                new File(".").listFiles((dir, name) -> name.matches("antagon-notify-\\d+\\.txt"));
+        if (files == null || files.length == 0) return;
+        Arrays.sort(files, (a, b) -> a.getName().compareTo(b.getName()));
+        for (File file : files) {
+            try {
+                String name = file.getName();
+                long sent = Long.parseLong(name.substring(15, Math.min(name.length() - 4, 28)));
+                String[] v =
+                        new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8)
+                                .split("\t", -1);
+                if (v.length >= 3
+                        && System.currentTimeMillis() - sent < 30000
+                        && notices.size() < 5) {
+                    for (int i = 0; i < v.length; i++) v[i] = unescapeField(v[i]);
+                    notices.add(v);
+                }
+            } catch (Exception ignored) {
+            }
+            file.delete();
+        }
+    }
+
+    /** Drawn in the HUD while playing and after the screen while a menu is open. */
+    @SubscribeEvent
+    public void hudNotices(RenderGameOverlayEvent.Post event) {
+        try {
+            if (event.type == RenderGameOverlayEvent.ElementType.ALL
+                    && field(mc, "field_71462_r", "currentScreen") == null) drawNotices();
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    @SubscribeEvent
+    public void screenNotices(GuiScreenEvent.DrawScreenEvent.Post event) {
+        drawNotices();
+    }
+
+    private void drawNotices() {
+        pollNotices();
+        if (notices.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        if (noticeStart == 0) noticeStart = now;
+        long age = now - noticeStart;
+        if (age > 4500) {
+            notices.remove(0);
+            noticeStart = 0;
+            return;
+        }
+        boolean begun = false;
+        try {
+            String[] n = notices.get(0);
+            int[] g = gui();
+            float sw = (float) Math.ceil(g[0] / (double) g[2]), w = 210, h = 42;
+            float slide = age < 200 ? (200 - age) / 200f : age > 4200 ? (age - 4200) / 300f : 0;
+            float x = (sw - w) / 2, y = 6 - slide * (h + 10);
+            begin(1);
+            begun = true;
+            rect(x + 3, y + 3, w, h, 0x60000000);
+            rect(x, y, w, h, 0xF419191C);
+            outline(x, y, w, h, 0xFF353539);
+            rect(x, y, 2, h, RED);
+            image(
+                    n[0].equals("message") ? "chat.png" : "logo.png",
+                    x + 10,
+                    y + 13,
+                    16,
+                    16,
+                    0,
+                    0,
+                    1,
+                    1);
+            text(fit(n[1], w - 44), x + 34, y + 5, WHITE);
+            text(fit(n[2], w - 44), x + 34, y + 21, GRAY);
+        } catch (Throwable e) {
+            report(e);
+        } finally {
+            if (begun) end();
+        }
+    }
+
+    private int[] gui() throws Exception {
+        int dw = ((Number) field(mc, "field_71443_c", "displayWidth")).intValue(),
+                dh = ((Number) field(mc, "field_71440_d", "displayHeight")).intValue();
+        Object settings = field(mc, "field_71474_y", "gameSettings");
+        int gui = ((Number) field(settings, "field_74335_Z", "guiScale")).intValue();
+        if (gui == 0) gui = 1000;
+        int factor = 1;
+        while (factor < gui && dw / (factor + 1) >= 320 && dh / (factor + 1) >= 240) factor++;
+        return new int[] {dw, dh, factor};
+    }
+
+    private void drawCrosshair(float cx, float cy, float scale) {
+        int len = Integer.parseInt(opt("crosshair", "size")),
+                t = Integer.parseInt(opt("crosshair", "thick")),
+                gap = Integer.parseInt(opt("crosshair", "gap"));
+        String style = opt("crosshair", "style");
+        List<float[]> parts = new ArrayList<float[]>();
+        float half = t / 2;
+        if (!style.equals("ponto")) {
+            parts.add(new float[] {-gap - len - half, -half, len, t});
+            parts.add(new float[] {gap + t - half, -half, len, t});
+            parts.add(new float[] {-half, -gap - len - half, t, len});
+            parts.add(new float[] {-half, gap + t - half, t, len});
+        }
+        if (style.equals("ponto")) {
+            float r = Math.max(1, len / 2f);
+            for (int y = (int) -Math.ceil(r); y < Math.ceil(r); y++) {
+                float row = y + .5f,
+                        span = (float) Math.floor(Math.sqrt(Math.max(0, r * r - row * row)) + .5f);
+                if (span > 0) parts.add(new float[] {-span, y, span * 2, 1});
+            }
+        } else if (!style.equals("cruz")) parts.add(new float[] {-half, -half, t, t});
+        GL11.glPushMatrix();
+        GL11.glTranslatef(cx, cy, 0);
+        GL11.glScalef(scale, scale, 1);
+        if (flag("crosshair", "outline"))
+            for (float[] r : parts) rect(r[0] - 1, r[1] - 1, r[2] + 2, r[3] + 2, 0xFF000000);
+        for (float[] r : parts) rect(r[0], r[1], r[2], r[3], colorOf(opt("crosshair", "color")));
+        GL11.glPopMatrix();
+    }
+
+    @SubscribeEvent
+    public void crosshair(RenderGameOverlayEvent.Pre event) {
+        if (event.type != RenderGameOverlayEvent.ElementType.CROSSHAIRS || !enabled("crosshair"))
+            return;
+        event.setCanceled(true);
+        try {
+            Object settings = field(mc, "field_71474_y", "gameSettings");
+            if (((Number) field(settings, "field_74320_O", "thirdPersonView")).intValue() != 0
+                    || (Boolean) field(settings, "field_74330_P", "showDebugInfo")) return;
+            int[] g = gui();
+            begin(1f / g[2]);
+            try {
+                drawCrosshair(g[0] / 2, g[1] / 2, 1);
+            } finally {
+                end();
+            }
+        } catch (Throwable e) {
+            report(e);
+        }
+    }
+
+    @SubscribeEvent
+    public void render(RenderGameOverlayEvent.Post event) {
+        if (event.type != RenderGameOverlayEvent.ElementType.ALL
+                || hidden && !(menu != null && menu.editing)) return;
+        try {
+            Object player = field(mc, "field_71439_g", "thePlayer");
+            if (player == null) return;
+            int[] g = gui();
+            float scale = hudScale = Math.max(.7f, Math.min(1.6f, number("scale", 1))),
+                    sw = (float) Math.ceil(g[0] / (double) g[2]) / scale,
+                    sh = (float) Math.ceil(g[1] / (double) g[2]) / scale;
+            hudWidth = sw;
+            hudHeight = sh;
+            bounds.clear();
+            try {
+                begin(scale);
+                if (enabled("fps")) {
+                    Object fps =
+                            invoke(minecraft, null, new String[] {"func_175610_ah", "getDebugFPS"});
+                    panel("fps", fps + " FPS", 12, 12, sw, sh);
+                }
+                if (enabled("cps"))
+                    panel(
+                            "cps",
+                            left.size()
+                                    + (flag("cps", "right") ? " | " + right.size() : "")
+                                    + " CPS",
+                            12,
+                            36,
+                            sw,
+                            sh);
+                if (enabled("keys")) {
+                    boolean mouse = flag("keys", "mouse"), space = flag("keys", "space");
+                    float h = 48 + (mouse ? 25 : 0) + (space ? 25 : 0);
+                    place("keys", 77, h, 12, 64, sw, sh);
+                    float x = 0, y = 0;
+                    keycap("W", x + 26, y, 25, key("field_74351_w", Keyboard.KEY_W));
+                    keycap("A", x, y + 25, 25, key("field_74370_x", Keyboard.KEY_A));
+                    keycap("S", x + 26, y + 25, 25, key("field_74368_y", Keyboard.KEY_S));
+                    keycap("D", x + 52, y + 25, 25, key("field_74366_z", Keyboard.KEY_D));
+                    float row = y + 50;
+                    if (mouse) {
+                        keycap("LMB", x, row, 38, Mouse.isButtonDown(0));
+                        keycap("RMB", x + 39, row, 38, Mouse.isButtonDown(1));
+                        row += 25;
+                    }
+                    if (space)
+                        keycap("SPACE", x, row, 77, key("field_74314_A", Keyboard.KEY_SPACE));
+                    GL11.glPopMatrix();
+                }
+                if (enabled("coords")) {
+                    int x =
+                            (int)
+                                    Math.floor(
+                                            ((Number) field(player, "field_70165_t", "posX"))
+                                                    .doubleValue());
+                    int y =
+                            (int)
+                                    Math.floor(
+                                            ((Number) field(player, "field_70163_u", "posY"))
+                                                    .doubleValue());
+                    int z =
+                            (int)
+                                    Math.floor(
+                                            ((Number) field(player, "field_70161_v", "posZ"))
+                                                    .doubleValue());
+                    panel("coords", "XYZ " + x + " " + y + " " + z, 12, 180, sw, sh);
+                }
+                if (enabled("ping")) {
+                    String value = "LOCAL";
+                    try {
+                        Object net = call(mc, new String[] {"func_147114_u", "getNetHandler"});
+                        Object id = call(player, new String[] {"func_110124_au", "getUniqueID"});
+                        Object info =
+                                call(net, new String[] {"func_175102_a", "getPlayerInfo"}, id);
+                        if (info != null) {
+                            int ping =
+                                    ((Number)
+                                                    call(
+                                                            info,
+                                                            new String[] {
+                                                                "func_178853_c", "getResponseTime"
+                                                            }))
+                                            .intValue();
+                            value = ping + " ms";
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    panel("ping", value, 110, 12, sw, sh);
+                }
+                if (enabled("effects")) effectsOverlay(player, sw, sh);
+                if (enabled("radio")) radioOverlay(sw, sh);
+                if (enabled("combo"))
+                    panel("combo", combo > 0 ? combo + " COMBO" : "SEM COMBO", 12, 252, sw, sh);
+                if (enabled("reach"))
+                    panel(
+                            "reach",
+                            (System.currentTimeMillis() - lastReachAt < 3000
+                                            ? String.format(Locale.US, "%.2f", lastReach)
+                                            : "--")
+                                    + " BLOCOS",
+                            12,
+                            228,
+                            sw,
+                            sh);
+                if (enabled("togglesprint")
+                        && flag("togglesprint", "hud")
+                        && (sprintToggled || menu != null && menu.editing))
+                    panel("togglesprint", "SPRINT (TOGGLED)", 12, 204, sw, sh);
+                if (enabled("clock")) panel("clock", clockText(), 210, 12, sw, sh);
+            } finally {
+                end();
+            }
+            if (enabled("scoreboard") && !flag("scoreboard", "hide")) drawScoreboard(sw, sh);
+        } catch (Throwable error) {
+            report(error);
+        }
+    }
+
+    private String clockText() {
+        long now = System.currentTimeMillis(), minute = now / 60000;
+        String format = opt("clock", "format");
+        if (minute != clockMinute || !format.equals(clockFormat)) {
+            clockMinute = minute;
+            clockFormat = format;
+            clockText = (format.equals("12h") ? clock12 : clock24).format(new Date(now));
+        }
+        return clockText;
+    }
+
+    private void drawScoreboard(float sw, float sh) throws Exception {
+        Object world = field(mc, "field_71441_e", "theWorld");
+        Object player = field(mc, "field_71439_g", "thePlayer");
+        if (world == null || player == null) return;
+        Object board = call(world, new String[] {"func_96441_U", "getScoreboard"});
+        Object objective = null;
+        Object team =
+                call(
+                        board,
+                        new String[] {"func_96509_i", "getPlayersTeam"},
+                        call(player, new String[] {"func_70005_c_", "getName"}));
+        if (team != null) {
+            int color =
+                    ((Number)
+                                    call(
+                                            call(
+                                                    team,
+                                                    new String[] {
+                                                        "func_178775_l", "getChatFormat"
+                                                    }),
+                                            new String[] {"func_175746_b", "getColorIndex"}))
+                            .intValue();
+            if (color >= 0)
+                objective =
+                        call(
+                                board,
+                                new String[] {"func_96539_a", "getObjectiveInDisplaySlot"},
+                                3 + color);
+        }
+        if (objective == null)
+            objective = call(board, new String[] {"func_96539_a", "getObjectiveInDisplaySlot"}, 1);
+        if (objective == null) return;
+        Class<?> teams = Class.forName("net.minecraft.scoreboard.ScorePlayerTeam");
+        List<String[]> lines = new ArrayList<String[]>();
+        for (Object score :
+                (Collection<?>)
+                        call(board, new String[] {"func_96534_i", "getSortedScores"}, objective)) {
+            String name = (String) call(score, new String[] {"func_96653_e", "getPlayerName"});
+            if (name == null || name.startsWith("#")) continue;
+            Object owner = call(board, new String[] {"func_96509_i", "getPlayersTeam"}, name);
+            String text =
+                    (String)
+                            invoke(
+                                    teams,
+                                    null,
+                                    new String[] {"func_96667_a", "formatPlayerName"},
+                                    owner,
+                                    name);
+            lines.add(
+                    new String[] {
+                        text,
+                        "\u00a7c" + call(score, new String[] {"func_96652_c", "getScorePoints"})
+                    });
+        }
+        if (lines.size() > 15) lines = lines.subList(lines.size() - 15, lines.size());
+        Collections.reverse(lines);
+        Object font = field(mc, "field_71466_p", "fontRendererObj");
+        String title = (String) call(objective, new String[] {"func_96678_d", "getDisplayName"});
+        boolean numbers = flag("scoreboard", "numbers"), background = flag("scoreboard", "bg");
+        int width = stringWidth(font, title);
+        for (String[] line : lines)
+            width =
+                    Math.max(
+                            width,
+                            stringWidth(font, line[0])
+                                    + (numbers ? 3 + stringWidth(font, line[1]) : 0));
+        float s = percent("scoreboard", "size"), w = width + 4, h = (lines.size() + 1) * 9 + 1;
+        float x = Math.max(0, Math.min(number("scoreboard.x", sw - w * s - 1), sw - w * s));
+        float y = Math.max(0, Math.min(number("scoreboard.y", sh / 2 - h * s / 3), sh - h * s));
+        bounds.put("scoreboard", new float[] {x, y, w * s, h * s});
+        GL11.glPushMatrix();
+        GL11.glScalef(hudScale, hudScale, 1);
+        GL11.glTranslatef(x, y, 0);
+        GL11.glScalef(s, s, 1);
+        if (background) {
+            Class<?> gui = Class.forName("net.minecraft.client.gui.Gui");
+            String[] drawRect = {"func_73734_a", "drawRect"};
+            invoke(gui, null, drawRect, 0, 0, (int) w, 10, 0x66000000);
+            invoke(gui, null, drawRect, 0, 10, (int) w, (int) h, 0x50000000);
+        }
+        drawString(font, title, (int) (w - stringWidth(font, title)) / 2, 1, 0xFFFFFFFF);
+        for (int i = 0; i < lines.size(); i++) {
+            drawString(font, lines.get(i)[0], 2, 11 + i * 9, 0xFFFFFFFF);
+            if (numbers)
+                drawString(
+                        font,
+                        lines.get(i)[1],
+                        (int) w - 2 - stringWidth(font, lines.get(i)[1]),
+                        11 + i * 9,
+                        0xFFFFFFFF);
+        }
+        GL11.glPopMatrix();
+    }
+
+    private static int stringWidth(Object font, String text) throws Exception {
+        return ((Number) call(font, new String[] {"func_78256_a", "getStringWidth"}, text))
+                .intValue();
+    }
+
+    private static void drawString(Object font, String text, int x, int y, int color)
+            throws Exception {
+        invoke(
+                font.getClass(),
+                font,
+                new String[] {"func_78276_b", "drawString"},
+                text,
+                x,
+                y,
+                color);
+    }
+
+    private final class AccountsMenu extends GuiScreen {
+        private static final int PANEL_WIDTH = 380, ROW_HEIGHT = 24;
+        private final GuiScreen parent;
+        private final List<String> nicknames = new ArrayList<String>();
+        private String currentNickname = "Player",
+                premiumNickname = "",
+                mode = "offline",
+                input = "",
+                message = "";
+        private long snapshotModified = -1;
+        private boolean inputFocused = true, pending = false, choosingCreation = false;
+
+        AccountsMenu(GuiScreen parent) {
+            this.parent = parent;
+            readSnapshot();
+        }
+
+        private int panelHeight() {
+            int rows = nicknames.size() + (premiumNickname.isEmpty() ? 0 : 1);
+            return 200 + Math.max(1, rows) * ROW_HEIGHT;
+        }
+
+        private int panelX() {
+            return (field_146294_l - PANEL_WIDTH) / 2;
+        }
+
+        private int panelY() {
+            return Math.max(4, (field_146295_m - panelHeight()) / 2);
+        }
+
+        private void readSnapshot() {
+            try {
+                long modified = PROFILE_SNAPSHOT.lastModified();
+                if (!PROFILE_SNAPSHOT.isFile() || modified == snapshotModified) return;
+                List<String> lines =
+                        Files.readAllLines(PROFILE_SNAPSHOT.toPath(), StandardCharsets.UTF_8);
+                if (lines.size() < 2) return;
+                String active = lines.get(0).trim(), nextMode = lines.get(1).trim();
+                if (!active.matches("[A-Za-z0-9_]{3,16}")
+                        || !(nextMode.equals("offline") || nextMode.equals("microsoft"))) return;
+                currentNickname = active;
+                mode = nextMode;
+                Cosmetics.setLocalAlias(active);
+                nicknames.clear();
+                premiumNickname = "";
+                message = "";
+                for (int i = 2; i < lines.size(); i++) {
+                    String value = lines.get(i).trim();
+                    if (value.startsWith("!")) message = value.substring(1);
+                    else if (value.startsWith("@premium:")) {
+                        String premium = value.substring("@premium:".length());
+                        if (premium.matches("[A-Za-z0-9_]{3,16}")) premiumNickname = premium;
+                    }
+                    else if (value.matches("[A-Za-z0-9_]{3,16}")
+                            && !nicknames.contains(value)
+                            && nicknames.size() < 8) nicknames.add(value);
+                }
+                snapshotModified = modified;
+                pending = false;
+            } catch (IOException e) {
+                message = "No se pudo leer la lista de nicks.";
+            }
+        }
+
+        private boolean inside(int mx, int my, int x, int y, int width, int height) {
+            return mx >= x && my >= y && mx < x + width && my < y + height;
+        }
+
+        private void accountButton(
+                String label, int x, int y, int width, int height, int mx, int my, boolean primary) {
+            boolean hover = inside(mx, my, x, y, width, height);
+            rect(
+                    x,
+                    y,
+                    width,
+                    height,
+                    primary
+                            ? (hover ? 0xFFFF3A3A : RED)
+                            : (hover ? 0xFF3C3C3C : 0xFF2C2C2C));
+            text(label, x + (width - AntagonHud.this.width(label)) / 2, y + height / 2 - 7, WHITE);
+        }
+
+        private void send(String action, String nickname) {
+            if (pending) return;
+            if (!action.equals("premium")
+                    && (nickname == null || !nickname.matches("[A-Za-z0-9_]{3,16}"))) {
+                message = "Usa de 3 a 16 letras, números o _.";
+                return;
+            }
+            try {
+                requestGameProfile(action, nickname);
+                pending = true;
+                message = action.equals("premium") ? "Inicia sesion con Microsoft en el launcher..." : "Guardando...";
+            } catch (IOException e) {
+                message = "No se pudo enviar el cambio al launcher.";
+            }
+        }
+
+        @Override
+        public void func_73863_a(int mx, int my, float partial) {
+            readSnapshot();
+            boolean begun = false;
+            try {
+                begin(1f);
+                begun = true;
+                int x = panelX(), y = panelY(), height = panelHeight();
+                rect(0, 0, field_146294_l, field_146295_m, 0xD9080A0F);
+                rect(x + 4, y + 5, PANEL_WIDTH, height, 0xFF08090D);
+                rect(x, y, PANEL_WIDTH, height, 0xF4191C23);
+                outline(x, y, PANEL_WIDTH, height, 0xFFD5D8DE);
+                rect(x, y, PANEL_WIDTH, 28, 0xFF292D37);
+                text("CUENTAS / NICKS", x + 16, y + 9, WHITE);
+                accountButton("X", x + PANEL_WIDTH - 28, y + 4, 20, 20, mx, my, false);
+                text(
+                        "Actual: "
+                                + currentNickname
+                                + (mode.equals("microsoft") ? " · Microsoft" : " · Offline"),
+                        x + 16,
+                        y + 39,
+                        0xFFC5C9D2);
+                text("CREAR NICK", x + 16, y + 57, 0xFF9AA0AB);
+                rect(x + 16, y + 72, 204, 22, 0xFF101218);
+                outline(x + 16, y + 72, 204, 22, inputFocused ? accent() : 0xFF646A76);
+                text(
+                        input + (inputFocused && System.currentTimeMillis() / 500 % 2 == 0 ? "_" : ""),
+                        x + 22,
+                        y + 79,
+                        WHITE);
+                if (choosingCreation) {
+                    accountButton("OFFLINE", x + 234, y + 72, 62, 22, mx, my, true);
+                    accountButton("PREMIUM", x + 300, y + 72, 64, 22, mx, my, true);
+                } else accountButton("CREAR", x + 234, y + 72, 130, 22, mx, my, true);
+                text("NICKS GUARDADOS", x + 16, y + 101, 0xFF9AA0AB);
+                int rowY = y + 116;
+                if (nicknames.isEmpty())
+                    text("Todavía no hay nicks guardados.", x + 18, rowY + 6, GRAY);
+                for (int i = 0; i < nicknames.size(); i++) {
+                    int top = rowY + i * ROW_HEIGHT;
+                    String nickname = nicknames.get(i);
+                    rect(
+                            x + 12,
+                            top,
+                            PANEL_WIDTH - 24,
+                            21,
+                            nickname.equals(currentNickname) ? 0xFF303540 : 0xFF20232A);
+                    text(nickname, x + 18, top + 6, WHITE);
+                    accountButton(
+                            "USAR",
+                            x + PANEL_WIDTH - 154,
+                            top + 1,
+                            64,
+                            19,
+                            mx,
+                            my,
+                            nickname.equals(currentNickname));
+                    accountButton(
+                            "ELIMINAR", x + PANEL_WIDTH - 84, top + 1, 72, 19, mx, my, false);
+                }
+                if (!premiumNickname.isEmpty()) {
+                    int top = rowY + nicknames.size() * ROW_HEIGHT;
+                    rect(
+                            x + 12,
+                            top,
+                            PANEL_WIDTH - 24,
+                            21,
+                            mode.equals("microsoft") ? 0xFF303540 : 0xFF20232A);
+                    text("Premium · " + premiumNickname, x + 18, top + 6, WHITE);
+                    accountButton(
+                            "USAR",
+                            x + PANEL_WIDTH - 154,
+                            top + 1,
+                            64,
+                            19,
+                            mx,
+                            my,
+                            mode.equals("microsoft"));
+                }
+                int rowCount = nicknames.size() + (premiumNickname.isEmpty() ? 0 : 1);
+                int footer = rowY + Math.max(1, rowCount) * ROW_HEIGHT + 3;
+                String visibleMessage =
+                        pending
+                                ? message
+                                : message.isEmpty()
+                                        ? "Offline se aplica al entrar de nuevo; Premium usa la cuenta Microsoft."
+                                        : message;
+                text(visibleMessage, x + 16, footer, pending ? 0xFFFFD34A : 0xFF9AA0AB);
+                text("ESC: volver al menú", x + 16, y + height - 18, GRAY);
+                accountButton(
+                        "CERRAR", x + PANEL_WIDTH - 102, y + height - 28, 86, 22, mx, my, false);
+                if (mode.equals("microsoft"))
+                    text(
+                            "En servidores online necesitas tu cuenta Microsoft.",
+                            x + 16,
+                            y + height - 40,
+                            0xFFFFD34A);
+            } catch (Exception e) {
+                report(e);
+            } finally {
+                if (begun) end();
+            }
+        }
+
+        @Override
+        protected void func_73864_a(int mx, int my, int mouseButton) {
+            if (mouseButton != 0) return;
+            int x = panelX(), y = panelY(), height = panelHeight(), rowY = y + 116;
+            if (inside(mx, my, x + 16, y + 72, 204, 22)) {
+                inputFocused = true;
+                return;
+            }
+            inputFocused = false;
+            if (inside(mx, my, x + PANEL_WIDTH - 28, y + 4, 20, 20)
+                    || inside(mx, my, x + PANEL_WIDTH - 102, y + height - 28, 86, 22)) {
+                close();
+                return;
+            }
+            if (!choosingCreation && inside(mx, my, x + 234, y + 72, 130, 22)) {
+                choosingCreation = true;
+                return;
+            }
+            if (choosingCreation && inside(mx, my, x + 234, y + 72, 62, 22)) {
+                choosingCreation = false;
+                send("add", input.trim());
+                return;
+            }
+            if (choosingCreation && inside(mx, my, x + 300, y + 72, 64, 22)) {
+                choosingCreation = false;
+                send("premium", "");
+                return;
+            }
+            for (int i = 0; i < nicknames.size(); i++) {
+                int top = rowY + i * ROW_HEIGHT;
+                String nickname = nicknames.get(i);
+                if (inside(mx, my, x + PANEL_WIDTH - 154, top + 1, 64, 19))
+                    send("select", nickname);
+                else if (inside(mx, my, x + PANEL_WIDTH - 84, top + 1, 72, 19))
+                    send("remove", nickname);
+            }
+            if (!premiumNickname.isEmpty()) {
+                int top = rowY + nicknames.size() * ROW_HEIGHT;
+                if (inside(mx, my, x + PANEL_WIDTH - 154, top + 1, 64, 19)) send("premium-select", premiumNickname);
+            }
+        }
+
+        @Override
+        protected void func_73869_a(char character, int key) {
+            if (key == Keyboard.KEY_ESCAPE) {
+                close();
+                return;
+            }
+            if (key == Keyboard.KEY_RETURN || key == Keyboard.KEY_NUMPADENTER) {
+                if (choosingCreation) {
+                    choosingCreation = false;
+                    send("add", input.trim());
+                } else choosingCreation = true;
+                return;
+            }
+            if (!inputFocused || pending) return;
+            if (key == Keyboard.KEY_BACK) {
+                if (!input.isEmpty()) input = input.substring(0, input.length() - 1);
+            } else if (character >= 32
+                    && character <= 126
+                    && input.length() < 16
+                    && ((character >= 'A' && character <= 'Z')
+                            || (character >= 'a' && character <= 'z')
+                            || (character >= '0' && character <= '9')
+                            || character == '_')) input += character;
+        }
+
+        private void close() {
+            try {
+                call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, parent);
+            } catch (Exception e) {
+                report(e);
+            }
+        }
+    }
+
+    private final class Menu extends GuiScreen {
+        static final int PW = MenuLayout.WIDTH;
+        private final GuiScreen parent;
+        int category = 0;
+        int[] visibleMods = ModuleRegistry.filter(0);
+        float scroll = 0, scrollTarget = 0;
+        long lastDraw = 0;
+        long lastHudClickAt = 0;
+        String lastHudClick = null;
+        String page = null, drag = null, resizing = null, notice = "";
+        float resizeAnchorX, resizeAnchorY, resizeWidth, resizeHeight, resizeSize;
+        int corner;
+        String binding = null, typing = null;
+        boolean volumeDrag = false;
+        long volumeSent = 0;
+        float ms = 1;
+        boolean editing = false;
+        float x0, y0, dx, dy;
+
+        Menu(GuiScreen parent) {
+            this.parent = parent;
+            menu = this;
+        }
+
+        private boolean in(int mx, int my, float x, float y, float w, float h) {
+            return mx >= x && my >= y && mx < x + w && my < y + h;
+        }
+
+        private void button(
+                String label, float x, float y, float w, float h, int mx, int my, boolean primary) {
+            boolean hover = in(mx, my, x, y, w, h);
+            rect(
+                    x,
+                    y,
+                    w,
+                    h,
+                    primary ? (hover ? 0xFFFF3A3A : RED) : (hover ? 0xFF3C3C3C : 0xFF2C2C2C));
+            text(label, x + (w - width(label)) / 2, y + h / 2 - 7.5f, WHITE);
+        }
+
+        void close() {
+            try {
+                call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, parent);
+            } catch (Exception e) {
+                report(e);
+            }
+        }
+
+        @Override
+        public boolean func_73868_f() {
+            return false;
+        }
+
+        @Override
+        public void func_146281_b() {
+            if (menu == this) menu = null;
+            save();
+        }
+
+        @Override
+        protected void func_73869_a(char c, int key) {
+            if (typing != null) {
+                String property = "autotext." + typing + ".text",
+                        text = config.getProperty(property, "");
+                boolean paste =
+                        key == Keyboard.KEY_V
+                                && (Keyboard.isKeyDown(Keyboard.KEY_LMETA)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_RMETA)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL));
+                if (key == Keyboard.KEY_RETURN || key == Keyboard.KEY_ESCAPE) typing = null;
+                else if (key == Keyboard.KEY_BACK) {
+                    if (!text.isEmpty())
+                        config.setProperty(property, text.substring(0, text.length() - 1));
+                } else if (paste)
+                    config.setProperty(property, chatText(text + Spotify.clipboard()));
+                else if (c >= 32 && c != 127 && c != 167)
+                    config.setProperty(property, chatText(text + c));
+                if (typing == null) save();
+                return;
+            }
+            if (binding != null) {
+                if (key == Keyboard.KEY_BACK || key == Keyboard.KEY_DELETE)
+                    config.setProperty(binding, "NINGUNA");
+                else if (key != Keyboard.KEY_ESCAPE
+                        && key != Keyboard.KEY_RSHIFT
+                        && key != Keyboard.KEY_NONE)
+                    config.setProperty(binding, Keyboard.getKeyName(key));
+                binding = null;
+                save();
+                return;
+            }
+            if (page == null && !editing) {
+                if (key == Keyboard.KEY_DOWN || key == Keyboard.KEY_NEXT) {
+                    scrollBy(key == Keyboard.KEY_NEXT ? MenuLayout.viewport(ph()) : 35);
+                    return;
+                }
+                if (key == Keyboard.KEY_UP || key == Keyboard.KEY_PRIOR) {
+                    scrollBy(key == Keyboard.KEY_PRIOR ? -MenuLayout.viewport(ph()) : -35);
+                    return;
+                }
+                if (key == Keyboard.KEY_HOME) {
+                    scrollTarget = 0;
+                    return;
+                }
+                if (key == Keyboard.KEY_END) {
+                    scrollTarget = MenuLayout.maxScroll(visibleMods.length, ph());
+                    return;
+                }
+            }
+            if (key == Keyboard.KEY_RSHIFT) close();
+            else if (key == Keyboard.KEY_ESCAPE) {
+                if (editing) editing = false;
+                else if (page != null) page = null;
+                else close();
+            }
+        }
+
+        @Override
+        public void func_73863_a(int mx, int my, float partial) {
+            try {
+                ms =
+                        editing
+                                ? 1
+                                : MenuLayout.scale(
+                                        field_146294_l, field_146295_m, page == null ? 0 : ph());
+                begin(ms);
+                int w = (int) (field_146294_l / ms), h = (int) (field_146295_m / ms);
+                mx = (int) (mx / ms);
+                my = (int) (my / ms);
+                if (editing) {
+                    drawEdit(mx, my, w, h);
+                    return;
+                }
+                rect(0, 0, w, h, 0x99000000);
+                x0 = (w - PW) / 2;
+                y0 = Math.max(4, (h - ph()) / 2);
+                rect(x0 + 4, y0 + 5, PW, ph(), 0x60000000);
+                rect(x0, y0, PW, ph(), 0xFA19191C);
+                outline(x0, y0, PW, ph(), 0xFF353539);
+                if (page != null) {
+                    rect(x0 + 1, y0 + 1, PW - 2, 24, 0xFF222226);
+                    rect(x0, y0, 3, 24, RED);
+                }
+                if (page == null) drawHome(mx, my);
+                else drawOptions(mx, my);
+                if (!notice.isEmpty())
+                    text(notice, x0 + (PW - width(notice)) / 2, y0 + ph() - 16, RED);
+            } catch (Throwable e) {
+                report(e);
+            } finally {
+                end();
+            }
+        }
+
+        static final float SLIDER = 150;
+        String rangeDrag = null;
+        static final float GRID = 8, SNAP = 4, GAP = 2;
+        float guideX = -1, guideY = -1;
+
+        private float top() {
+            return y0 + 32 + (page != null && page.equals("crosshair") ? 72 : 0);
+        }
+
+        private float sliderX() {
+            return x0 + PW - 200;
+        }
+
+        private void slider(float y, float t) {
+            float sx = sliderX();
+            rect(sx, y + 10, SLIDER, 2, 0xFF4A4A4A);
+            rect(sx, y + 10, SLIDER * t, 2, RED);
+            rect(sx + SLIDER * t - 3, y + 6, 6, 10, WHITE);
+        }
+
+        private float[] range(String[] o) {
+            String[] r = o[2].split(":", -1);
+            return new float[] {
+                Float.parseFloat(r[1]), Float.parseFloat(r[2]), Float.parseFloat(r[3])
+            };
+        }
+
+        private void setRange(String[] o, float mx) {
+            float[] r = range(o);
+            float t = Math.max(0, Math.min(1, (mx - sliderX()) / SLIDER));
+            float v = r[0] + Math.round(t * (r[1] - r[0]) / r[2]) * r[2];
+            String unit = o[2].split(":", -1)[4];
+            config.setProperty(page + "." + o[0], (v == (int) v ? "" + (int) v : "" + v) + unit);
+        }
+
+        private void drawCrosshairPreview() {
+            float x = x0 + 8, y = y0 + 32, w = PW - 16;
+            rect(x, y, w, 34, 0xFF6E9BD3);
+            rect(x, y + 34, w, 30, 0xFF4F7A33);
+            try {
+                float px = 1 / (gui()[2] * ms);
+                drawCrosshair(x + w * .3f, y + 32, px);
+                drawCrosshair(x + w * .7f, y + 32, px * 4);
+                text("REAL", x + 6, y + 3, WHITE);
+                text("ZOOM 4X", x + w - 6 - width("ZOOM 4X"), y + 3, WHITE);
+            } catch (Exception e) {
+                report(e);
+            }
+        }
+
+        private int ph() {
+            return page == null
+                    ? MenuLayout.homeHeight(field_146294_l, field_146295_m)
+                    : Math.max(160, (int) (top() - y0) + 8 + options(page).length * 26);
+        }
+
+        private float[] card(int i) {
+            return MenuLayout.card(i, x0, y0, scroll);
+        }
+
+        private void toggle(float x, float y, boolean on) {
+            rect(x, y, 22, 10, on ? RED : 0xFF4A4A4A);
+            rect(on ? x + 13 : x + 1, y + 1, 8, 8, WHITE);
+        }
+
+        private void slidersIcon(float x, float y, int c) {
+            rect(x, y + 1, 10, 1, c);
+            rect(x, y + 5, 10, 1, c);
+            rect(x, y + 9, 10, 1, c);
+            rect(x + 6, y, 2, 3, c);
+            rect(x + 2, y + 4, 2, 3, c);
+            rect(x + 5, y + 8, 2, 3, c);
+        }
+
+        private void setCategory(int next) {
+            category = next;
+            visibleMods = ModuleRegistry.filter(category);
+            scroll = scrollTarget = 0;
+        }
+
+        private void scrollBy(float amount) {
+            scrollTarget = MenuLayout.clampScroll(scrollTarget + amount, visibleMods.length, ph());
+        }
+
+        private void mark(float x, float y) {
+            rect(x, y, 26, 26, RED);
+            rect(x + 11, y + 4, 4, 18, WHITE);
+            rect(x + 4, y + 11, 18, 4, WHITE);
+            for (int i = 0; i < 4; i++) {
+                rect(x + 6 + i * 3, y + 6 + i * 3, 3, 3, WHITE);
+                rect(x + 15 - i * 3, y + 6 + i * 3, 3, 3, WHITE);
+            }
+        }
+
+        private void drawHome(int mx, int my) throws Exception {
+            long now = System.nanoTime();
+            float delta = lastDraw == 0 ? 1 / 60f : Math.min(.05f, (now - lastDraw) / 1e9f);
+            lastDraw = now;
+            scrollTarget = MenuLayout.clampScroll(scrollTarget, visibleMods.length, ph());
+            scroll += (scrollTarget - scroll) * (1 - (float) Math.exp(-delta * 18));
+            if (Math.abs(scroll - scrollTarget) < .05f) scroll = scrollTarget;
+            scroll = MenuLayout.clampScroll(scroll, visibleMods.length, ph());
+            mark(x0 + 16, y0 + 14);
+            text("PRIMARIX", x0 + 52, y0 + 20, WHITE);
+            button("COLOR", x0 + PW - 184, y0 + 16, 50, 24, mx, my, false);
+            rect(x0 + PW - 145, y0 + 24, 7, 7, accent());
+            button("EDITAR HUD", x0 + PW - 126, y0 + 16, 92, 24, mx, my, true);
+            button("X", x0 + PW - 28, y0 + 16, 16, 24, mx, my, false);
+            rect(x0 + 16, y0 + 49, PW - 32, 1, 0xFF303035);
+            for (int i = 0; i < CATEGORIES.length; i++) {
+                float x = x0 + 16 + i * 91;
+                boolean selected = category == i;
+                rect(
+                        x,
+                        y0 + 56,
+                        85,
+                        20,
+                        selected
+                                ? 0xFF442023
+                                : in(mx, my, x, y0 + 56, 85, 20) ? 0xFF2B2B30 : 0xFF202024);
+                text(
+                        CATEGORIES[i],
+                        x + (85 - width(CATEGORIES[i])) / 2,
+                        y0 + 58,
+                        selected ? WHITE : GRAY);
+                if (selected) rect(x, y0 + 74, 85, 2, RED);
+            }
+            String count = visibleMods.length + " MODS";
+            text(count, x0 + PW - 16 - width(count), y0 + 58, GRAY);
+            float top = y0 + MenuLayout.CONTENT_TOP, viewport = MenuLayout.viewport(ph());
+            int[] dimensions = gui();
+            float pixels = dimensions[2] * ms;
+            GL11.glPushAttrib(GL11.GL_SCISSOR_BIT);
+            GL11.glEnable(GL11.GL_SCISSOR_TEST);
+            GL11.glScissor(
+                    (int) ((x0 + 12) * pixels),
+                    (int) (dimensions[1] - (top + viewport) * pixels),
+                    (int) ((PW - 24) * pixels),
+                    (int) (viewport * pixels));
+            try {
+                for (int slot = 0; slot < visibleMods.length; slot++) {
+                    int index = visibleMods[slot];
+                    float[] c = card(slot);
+                    if (c[1] + c[3] <= top || c[1] >= top + viewport) continue;
+                    String mod = MODS[index];
+                    boolean on = enabled(mod),
+                            hover =
+                                    in(
+                                            mx,
+                                            my,
+                                            c[0],
+                                            Math.max(top, c[1]),
+                                            c[2],
+                                            Math.min(top + viewport, c[1] + c[3])
+                                                    - Math.max(top, c[1]));
+                    rect(c[0], c[1], c[2], c[3], hover ? 0xFF303035 : 0xFF242428);
+                    outline(
+                            c[0],
+                            c[1],
+                            c[2],
+                            c[3],
+                            hover ? 0xFF636067 : on ? 0xFF503035 : 0xFF343439);
+                    rect(c[0] + 1, c[1] + 1, on ? 24 : 8, 2, on ? RED : 0xFF555259);
+                    text(NAMES[index], c[0] + 10, c[1] + 8, WHITE);
+                    text(fit(DESCRIPTIONS[index], c[2] - 20), c[0] + 10, c[1] + 23, GRAY);
+                    rect(c[0] + 10, c[1] + 46, 3, 3, on ? RED : 0xFF6A686D);
+                    text(on ? "ACTIVO" : "DESACTIVADO", c[0] + 18, c[1] + 40, on ? WHITE : GRAY);
+                    if (options(mod).length > 0) {
+                        float gx = c[0] + c[2] - 56;
+                        boolean over = in(mx, my, gx - 4, c[1] + 38, 20, 20);
+                        if (over) rect(gx - 4, c[1] + 38, 20, 20, 0xFF444149);
+                        slidersIcon(gx + 1, c[1] + 43, over ? WHITE : GRAY);
+                    }
+                    toggle(c[0] + c[2] - 32, c[1] + 43, on);
+                }
+            } finally {
+                GL11.glPopAttrib();
+            }
+            float max = MenuLayout.maxScroll(visibleMods.length, ph());
+            if (max > 0) {
+                float thumb = Math.max(24, viewport * viewport / (viewport + max));
+                rect(x0 + PW - 8, top, 2, viewport, 0xFF303035);
+                rect(x0 + PW - 8, top + scroll / max * (viewport - thumb), 2, thumb, RED);
+            }
+            int enabledCount = 0;
+            for (String mod : MODS) if (enabled(mod)) enabledCount++;
+            rect(x0 + 16, y0 + ph() - 22, PW - 32, 1, 0xFF303035);
+            text(enabledCount + " ACTIVOS", x0 + 16, y0 + ph() - 18, GRAY);
+        }
+
+        private void drawOptions(int mx, int my) {
+            button("<", x0 + 8, y0 + 4, 18, 16, mx, my, false);
+            text(NAMES[Arrays.asList(MODS).indexOf(page)], x0 + 34, y0 + 5, WHITE);
+            if (page.equals("crosshair")) drawCrosshairPreview();
+            String[][] opts = options(page);
+            if (opts.length == 0) text("Este módulo no tiene ajustes.", x0 + 16, top() + 5, GRAY);
+            for (int k = 0; k < opts.length; k++) {
+                float ry = top() + k * 26;
+                String v = opt(page, opts[k][0]);
+                rect(x0 + 8, ry, PW - 16, 22, 0xFF262626);
+                text(opts[k][1], x0 + 16, ry + 3, WHITE);
+                if (opts[k][0].equals("playlist")) {
+                    String uri = config.getProperty("radio.uri");
+                    text(
+                        uri == null ? "NINGUNA" : uri.split(":")[1].toUpperCase(),
+                            x0 + 150,
+                            ry + 3,
+                            GRAY);
+                    button("PEGAR ENLACE", x0 + PW - 108, ry + 3, 92, 16, mx, my, true);
+                } else if (opts[k][0].equals("controls")) {
+                    button("<<", x0 + PW - 108, ry + 3, 24, 16, mx, my, false);
+                    button(
+                        radioState.equals("playing") ? "PAUSAR" : "REPROD.",
+                            x0 + PW - 82,
+                            ry + 3,
+                            40,
+                            16,
+                            mx,
+                            my,
+                            false);
+                    button(">>", x0 + PW - 40, ry + 3, 24, 16, mx, my, false);
+                } else if (opts[k][2].equals("autotext")) {
+                    String slot = opts[k][0],
+                            text = config.getProperty("autotext." + slot + ".text", "");
+                    String key = config.getProperty("autotext." + slot + ".key", "NINGUNA");
+                    boolean active = slot.equals(typing),
+                            waiting = ("autotext." + slot + ".key").equals(binding);
+                    float fw = PW - 136;
+                    rect(x0 + 14, ry + 3, fw, 16, active ? 0xFF3A1414 : 0xFF1A1A1A);
+                    if (active) outline(x0 + 14, ry + 3, fw, 16, RED);
+                    String shown = text.isEmpty() && !active ? "/comando o mensaje" : text;
+                    shown =
+                            fit(
+                                    shown
+                                            + (active && System.currentTimeMillis() / 500 % 2 == 0
+                                                    ? "_"
+                                                    : ""),
+                                    fw - 10);
+                    text(shown, x0 + 19, ry + 3, text.isEmpty() && !active ? GRAY : WHITE);
+                    button(
+                            waiting ? "PULSA..." : key.replace("MOUSE", "RATÓN "),
+                            x0 + PW - 108,
+                            ry + 3,
+                            92,
+                            16,
+                            mx,
+                            my,
+                            waiting);
+                } else if (opts[k][2].equals("key")) {
+                    boolean waiting = (page + "." + opts[k][0]).equals(binding);
+                    button(
+                            waiting ? "PULSA..." : v.replace("MOUSE", "RATÓN "),
+                            x0 + PW - 108,
+                            ry + 3,
+                            92,
+                            16,
+                            mx,
+                            my,
+                            waiting);
+                } else if (opts[k][2].startsWith("range:")) {
+                    float[] r = range(opts[k]);
+                    slider(ry, (Spotify.number(v.replace("%", "")) - r[0]) / (r[1] - r[0]));
+                    text(v, x0 + PW - 16 - width(v), ry + 3, WHITE);
+                } else if (opts[k][2].equals("slider")) {
+                    int vol = radioVolume;
+                    if (vol >= 0) slider(ry, vol / 100f);
+                    else rect(sliderX(), ry + 10, SLIDER, 2, 0xFF4A4A4A);
+                    String label = vol < 0 ? "--" : "" + vol;
+                    text(label, x0 + PW - 16 - width(label), ry + 3, vol < 0 ? GRAY : WHITE);
+                } else if (v.equals("on") || v.equals("off"))
+                    toggle(x0 + PW - 38, ry + 6, v.equals("on"));
+                else {
+                    button(v.toUpperCase(), x0 + PW - 108, ry + 3, 92, 16, mx, my, false);
+                    if (Arrays.asList(COLOR_NAMES).contains(v))
+                        rect(x0 + PW - 102, ry + 7, 8, 8, colorOf(v));
+                }
+            }
+        }
+
+        private void drawEdit(int mx, int my, int w, int h) {
+            rect(0, 0, w, h, 0x33000000);
+            float s = hudScale;
+            if (drag != null) {
+                for (float gx = 0; gx < w; gx += GRID * s) rect(gx, 0, 1, h, 0x30FFFFFF);
+                for (float gy = 0; gy < h; gy += GRID * s) rect(0, gy, w, 1, 0x30FFFFFF);
+                if (guideX >= 0) rect(guideX * s, 0, 1, h, 0xCCEE1515);
+                if (guideY >= 0) rect(0, guideY * s, w, 1, 0xCCEE1515);
+            }
+            for (Map.Entry<String, float[]> e : bounds.entrySet()) {
+                float[] b = e.getValue();
+                boolean active = e.getKey().equals(drag) || e.getKey().equals(resizing);
+                outline(
+                        b[0] * s - 1,
+                        b[1] * s - 1,
+                        b[2] * s + 2,
+                        b[3] * s + 2,
+                        active ? RED : 0xCCF0EEE8);
+                for (int c = 0; c < 4; c++) {
+                    float[] p = cornerOf(b, c);
+                    rect(
+                            p[0] - 3,
+                            p[1] - 3,
+                            6,
+                            6,
+                            in(mx, my, p[0] - 4, p[1] - 4, 8, 8)
+                                            || e.getKey().equals(resizing) && c == corner
+                                    ? RED
+                                    : WHITE);
+                }
+                if (e.getKey().equals(resizing)) {
+                    String pct = Math.round(percent(resizing, "size") * 100) + "%";
+                    float[] p = cornerOf(b, corner);
+                    text(pct, p[0] + 5, p[1] - 4, WHITE);
+                }
+            }
+            float bx = w / 2f - 112, by = h - 28;
+            rect(bx - 4, by - 4, 232, 26, 0xF21E1E1E);
+            button("-", bx, by, 18, 18, mx, my, false);
+            String pct = Math.round(hudScale * 100) + "%";
+            text(pct, bx + 39 - width(pct) / 2, by + 2, WHITE);
+            button("+", bx + 60, by, 18, 18, mx, my, false);
+            button("REDEFINIR", bx + 84, by, 70, 18, mx, my, false);
+            button("GUARDAR", bx + 158, by, 66, 18, mx, my, true);
+        }
+
+        @Override
+        public void func_146274_d() throws IOException {
+            super.func_146274_d();
+            int wheel = Mouse.getEventDWheel();
+            if (wheel == 0) return;
+            if (!editing) {
+                if (page == null) scrollBy(wheel > 0 ? -35 : 35);
+                return;
+            }
+            try {
+                int[] g = gui();
+                float mx = Mouse.getEventX() * field_146294_l / (float) g[0] / hudScale,
+                        my =
+                                (field_146295_m
+                                                - Mouse.getEventY() * field_146295_m / (float) g[1]
+                                                - 1)
+                                        / hudScale;
+                for (Map.Entry<String, float[]> e : bounds.entrySet()) {
+                    float[] b = e.getValue();
+                    if (mx >= b[0] && my >= b[1] && mx < b[0] + b[2] && my < b[1] + b[3]) {
+                        setSize(e.getKey(), percent(e.getKey(), "size") + (wheel > 0 ? .1f : -.1f));
+                        save();
+                        return;
+                    }
+                }
+            } catch (Exception e) {
+                report(e);
+            }
+        }
+
+        private void setVolume(float mx, boolean last) {
+            int v = Math.max(0, Math.min(100, Math.round((mx - sliderX()) / SLIDER * 100)));
+            radioVolume = v;
+            volumeSentAt = System.currentTimeMillis();
+            if (last || System.currentTimeMillis() - volumeSent > 150) {
+                volumeSent = System.currentTimeMillis();
+                Spotify.volume(v);
+            }
+        }
+
+        private void pastePlaylist() {
+            String link = Spotify.clipboard();
+            if (Spotify.jam(link) != null) {
+                notice = "ACEPTA LA INVITACIÓN DE JAM EN SPOTIFY";
+                config.setProperty("radio", "true");
+                save();
+                Spotify.open(link);
+                return;
+            }
+            String uri = Spotify.uri(link);
+            if (uri == null) {
+                notice = "COPIA EL ENLACE DE UNA PLAYLIST O JAM DE SPOTIFY";
+                return;
+            }
+            notice = "";
+            config.setProperty("radio.uri", uri);
+            config.setProperty("radio", "true");
+            save();
+            radioPlay();
+        }
+
+        private void cycle(String mod, String[] o) {
+            List<String> values = Arrays.asList(o[2].split(","));
+            config.setProperty(
+                    mod + "." + o[0],
+                    values.get((values.indexOf(opt(mod, o[0])) + 1) % values.size()));
+            save();
+        }
+
+        private void setScale(float v) {
+            config.setProperty(
+                    "scale", "" + Math.round(Math.max(.7f, Math.min(1.6f, v)) * 10) / 10f);
+            save();
+        }
+
+        @Override
+        protected void func_73864_a(int mx, int my, int button) {
+            if (typing != null) {
+                typing = null;
+                save();
+            }
+            if (binding != null) {
+                if (button >= 2) config.setProperty(binding, "MOUSE" + (button + 1));
+                binding = null;
+                save();
+                return;
+            }
+            if (button != 0) return;
+            if (!editing) {
+                mx = (int) (mx / ms);
+                my = (int) (my / ms);
+            }
+            if (editing) {
+                float bx = field_146294_l / 2f - 112, by = field_146295_m - 28;
+                if (in(mx, my, bx, by, 18, 18)) {
+                    setScale(hudScale - .1f);
+                    return;
+                }
+                if (in(mx, my, bx + 60, by, 18, 18)) {
+                    setScale(hudScale + .1f);
+                    return;
+                }
+                if (in(mx, my, bx + 84, by, 70, 18)) {
+                    for (String m : MODS) {
+                        config.remove(m + ".x");
+                        config.remove(m + ".y");
+                    }
+                    config.setProperty("scale", "1");
+                    save();
+                    return;
+                }
+                if (in(mx, my, bx + 158, by, 66, 18)) {
+                    editing = false;
+                    return;
+                }
+                for (Map.Entry<String, float[]> e : bounds.entrySet()) {
+                    float[] b = e.getValue();
+                    for (int c = 0; c < 4; c++) {
+                        float[] p = cornerOf(b, c);
+                        if (in(mx, my, p[0] - 4, p[1] - 4, 8, 8)) {
+                            float[] a = cornerOf(b, 3 - c);
+                            resizing = e.getKey();
+                            corner = c;
+                            resizeAnchorX = a[0];
+                            resizeAnchorY = a[1];
+                            resizeWidth = b[2] * hudScale;
+                            resizeHeight = b[3] * hudScale;
+                            resizeSize = percent(resizing, "size");
+                            return;
+                        }
+                    }
+                }
+                for (Map.Entry<String, float[]> e : bounds.entrySet()) {
+                    float[] b = e.getValue();
+                    float hx = mx / hudScale, hy = my / hudScale;
+                    if (hx >= b[0] && hy >= b[1] && hx < b[0] + b[2] && hy < b[1] + b[3]) {
+                        long now = System.currentTimeMillis();
+                        if (e.getKey().equals(lastHudClick) && now - lastHudClickAt <= 450) {
+                            page = e.getKey();
+                            editing = false;
+                            lastHudClick = null;
+                            return;
+                        }
+                        lastHudClick = e.getKey();
+                        lastHudClickAt = now;
+                        drag = e.getKey();
+                        dx = hx - b[0];
+                        dy = hy - b[1];
+                        return;
+                    }
+                }
+                return;
+            }
+            if (page == null) {
+                if (in(mx, my, x0 + PW - 184, y0 + 16, 50, 24)) {
+                    config.setProperty("ui.accent", ACCENT_NAMES[(accentIndex() + 1) % ACCENT_NAMES.length]);
+                    RED = accent();
+                    save();
+                    return;
+                }
+                if (in(mx, my, x0 + PW - 126, y0 + 16, 92, 24)) {
+                    editing = true;
+                    return;
+                }
+                if (in(mx, my, x0 + PW - 28, y0 + 16, 16, 24)) {
+                    close();
+                    return;
+                }
+                for (int i = 0; i < CATEGORIES.length; i++)
+                    if (in(mx, my, x0 + 16 + i * 91, y0 + 56, 85, 20)) {
+                        setCategory(i);
+                        return;
+                    }
+                if (!in(
+                        mx,
+                        my,
+                        x0 + 12,
+                        y0 + MenuLayout.CONTENT_TOP,
+                        PW - 24,
+                        MenuLayout.viewport(ph()))) return;
+                for (int slot = 0; slot < visibleMods.length; slot++) {
+                    int i = visibleMods[slot];
+                    float[] c = card(slot);
+                    if (!in(mx, my, c[0], c[1], c[2], c[3])) continue;
+                    if (options(MODS[i]).length > 0
+                            && in(mx, my, c[0] + c[2] - 60, c[1] + 38, 20, 20)) {
+                        page = MODS[i];
+                        return;
+                    }
+                    config.setProperty(MODS[i], "" + !enabled(MODS[i]));
+                    save();
+                    if (MODS[i].equals("radio") && enabled("radio")) radioPlay();
+                    return;
+                }
+            } else {
+                if (in(mx, my, x0 + 8, y0 + 4, 18, 16)) {
+                    page = null;
+                    return;
+                }
+                String[][] opts = options(page);
+                for (int k = 0; k < opts.length; k++) {
+                    float ry = top() + k * 26;
+                    if (opts[k][0].equals("playlist")) {
+                        if (in(mx, my, x0 + PW - 108, ry + 3, 92, 16)) pastePlaylist();
+                        continue;
+                    }
+                    if (opts[k][2].equals("autotext")) {
+                        if (in(mx, my, x0 + 14, ry + 3, PW - 136, 16)) typing = opts[k][0];
+                        else if (in(mx, my, x0 + PW - 108, ry + 3, 92, 16))
+                            binding = "autotext." + opts[k][0] + ".key";
+                        continue;
+                    }
+                    if (opts[k][2].equals("key")) {
+                        if (in(mx, my, x0 + PW - 108, ry + 3, 92, 16))
+                            binding = page + "." + opts[k][0];
+                        continue;
+                    }
+                    if (opts[k][2].startsWith("range:")) {
+                        if (in(mx, my, sliderX() - 6, ry, SLIDER + 12, 22)) {
+                            rangeDrag = opts[k][0];
+                            setRange(opts[k], mx);
+                        }
+                        continue;
+                    }
+                    if (opts[k][2].equals("slider")) {
+                        if (in(mx, my, sliderX() - 6, ry, SLIDER + 12, 22)) {
+                            volumeDrag = true;
+                            setVolume(mx, false);
+                        }
+                        continue;
+                    }
+                    if (opts[k][0].equals("controls")) {
+                        if (in(mx, my, x0 + PW - 108, ry + 3, 24, 16)) Spotify.previous();
+                        else if (in(mx, my, x0 + PW - 82, ry + 3, 40, 16)) radioToggle();
+                        else if (in(mx, my, x0 + PW - 40, ry + 3, 24, 16)) Spotify.next();
+                        continue;
+                    }
+                    if (in(mx, my, x0 + PW - 108, ry, 92, 22)) {
+                        cycle(page, opts[k]);
+                        return;
+                    }
+                }
+            }
+        }
+
+        private String chatText(String text) {
+            String clean = text.replaceAll("[\\p{Cntrl}\u00a7]", "");
+            return clean.length() > 100 ? clean.substring(0, 100) : clean;
+        }
+
+        private float setSize(String key, float size) {
+            int pct = Math.round(Math.max(.5f, Math.min(2f, size)) * 20) * 5;
+            config.setProperty(key + ".size", pct + "%");
+            return pct / 100f;
+        }
+
+        private float[] cornerOf(float[] b, int c) {
+            float s = hudScale;
+            return new float[] {
+                (c % 2 == 0 ? b[0] : b[0] + b[2]) * s, (c < 2 ? b[1] : b[1] + b[3]) * s
+            };
+        }
+
+        @Override
+        protected void func_146273_a(int mx, int my, int button, long time) {
+            if (!editing) {
+                mx = (int) (mx / ms);
+                my = (int) (my / ms);
+                if (volumeDrag) setVolume(mx, false);
+                if (rangeDrag != null)
+                    for (String[] o : options(page)) if (o[0].equals(rangeDrag)) setRange(o, mx);
+                return;
+            }
+            if (resizing != null) {
+                float wide = corner % 2 == 1 ? mx - resizeAnchorX : resizeAnchorX - mx;
+                float
+                        f =
+                                setSize(resizing, resizeSize * Math.max(4, wide) / resizeWidth)
+                                        / resizeSize,
+                        w = resizeWidth * f,
+                        h = resizeHeight * f;
+                float x = corner % 2 == 1 ? resizeAnchorX : resizeAnchorX - w,
+                        y = corner >= 2 ? resizeAnchorY : resizeAnchorY - h;
+                config.setProperty(resizing + ".x", "" + Math.max(0, Math.round(x / hudScale)));
+                config.setProperty(resizing + ".y", "" + Math.max(0, Math.round(y / hudScale)));
+                return;
+            }
+            if (drag == null) return;
+            float[] b = bounds.get(drag);
+            float w = b == null ? 0 : b[2], h = b == null ? 0 : b[3];
+            float[] x = snap(mx / hudScale - dx, w, hudWidth, 0),
+                    y = snap(my / hudScale - dy, h, hudHeight, 1);
+            guideX = x[1];
+            guideY = y[1];
+            config.setProperty(drag + ".x", "" + Math.max(0, Math.round(x[0])));
+            config.setProperty(drag + ".y", "" + Math.max(0, Math.round(y[0])));
+        }
+
+        private float[] snap(float pos, float size, float screen, int axis) {
+            List<float[]> targets = new ArrayList<float[]>();
+            targets.add(new float[] {0, 0});
+            targets.add(new float[] {screen - size, screen});
+            targets.add(new float[] {screen / 2 - size / 2, screen / 2});
+            for (Map.Entry<String, float[]> e : bounds.entrySet()) {
+                if (e.getKey().equals(drag)) continue;
+                float start = e.getValue()[axis], end = start + e.getValue()[axis + 2];
+                targets.add(new float[] {start, start});
+                targets.add(new float[] {end - size, end});
+                targets.add(new float[] {end + GAP, end + GAP});
+                targets.add(new float[] {start - size - GAP, start - GAP});
+                targets.add(new float[] {(start + end) / 2 - size / 2, (start + end) / 2});
+            }
+            float[] best = null;
+            for (float[] t : targets)
+                if (Math.abs(pos - t[0]) < SNAP
+                        && (best == null || Math.abs(pos - t[0]) < Math.abs(pos - best[0])))
+                    best = t;
+            return best != null ? best : new float[] {Math.round(pos / GRID) * GRID, -1};
+        }
+
+        @Override
+        protected void func_146286_b(int mx, int my, int state) {
+            if (volumeDrag) {
+                volumeDrag = false;
+                setVolume(mx / ms, true);
+            }
+            if (rangeDrag != null) {
+                rangeDrag = null;
+                save();
+            }
+            guideX = guideY = -1;
+            if (drag != null || resizing != null) {
+                drag = null;
+                resizing = null;
+                save();
+            }
+        }
+    }
+
+    private final Map<String, Integer> resourceTextures = new HashMap<String, Integer>();
+
+    private int resourceTexture(String name) throws Exception {
+        Integer id = resourceTextures.get(name);
+        if (id != null) return id;
+        BufferedImage img;
+        try (InputStream in =
+                name.startsWith("file:")
+                        ? new FileInputStream(name.substring(5))
+                        : getClass().getResourceAsStream("/assets/antagon/" + name)) {
+            img = ImageIO.read(in);
+        }
+        ByteBuffer pixels = BufferUtils.createByteBuffer(img.getWidth() * img.getHeight() * 4);
+        for (int y = 0; y < img.getHeight(); y++)
+            for (int x = 0; x < img.getWidth(); x++) {
+                int p = img.getRGB(x, y);
+                pixels.put((byte) (p >> 16))
+                        .put((byte) (p >> 8))
+                        .put((byte) p)
+                        .put((byte) (p >> 24));
+            }
+        pixels.flip();
+        id = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, id);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        GL11.glTexImage2D(
+                GL11.GL_TEXTURE_2D,
+                0,
+                GL11.GL_RGBA,
+                img.getWidth(),
+                img.getHeight(),
+                0,
+                GL11.GL_RGBA,
+                GL11.GL_UNSIGNED_BYTE,
+                pixels);
+        resourceTextures.put(name, id);
+        return id;
+    }
+
+    private void image(
+            String name, float x, float y, float w, float h, float u0, float v0, float u1, float v1)
+            throws Exception {
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, resourceTexture(name));
+        GL11.glColor4f(1, 1, 1, 1);
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glTexCoord2f(u0, v0);
+        GL11.glVertex2f(x, y);
+        GL11.glTexCoord2f(u0, v1);
+        GL11.glVertex2f(x, y + h);
+        GL11.glTexCoord2f(u1, v1);
+        GL11.glVertex2f(x + w, y + h);
+        GL11.glTexCoord2f(u1, v0);
+        GL11.glVertex2f(x + w, y);
+        GL11.glEnd();
+    }
+
+    private static String unescapeField(String s) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\' && i + 1 < s.length()) {
+                char n = s.charAt(++i);
+                out.append(n == 'n' ? '\n' : n == 't' ? '\t' : n);
+            } else out.append(c);
+        }
+        return out.toString();
+    }
+
+    private static String escapeField(String s) {
+        return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "");
+    }
+
+    /**
+     * In-game friends, chat and store. The launcher owns the session; this screen only reads its
+     * snapshot (antagon-ui-state.txt) and leaves commands for it (antagon-ui-cmd-*.txt).
+     */
+    private Hub smokeHub;
+
+    private final class Hub extends GuiScreen {
+        static final int W = 460, H = 280;
+        final GuiScreen parent;
+        String tab;
+        float ms = 1, x0, y0;
+        long lastRead = 0, updated = 0;
+        boolean online = false;
+        String me = "", notice = "", chat = null, typing = null, addText = "", chatText = "";
+        String callStatus = "", callHost = "";
+        boolean callMuted;
+        int balance = -1, listScroll = 0, page = 0;
+        final List<String[]> friends = new ArrayList<String[]>(),
+                incoming = new ArrayList<String[]>(),
+                outgoing = new ArrayList<String[]>(),
+                messages = new ArrayList<String[]>(),
+                items = new ArrayList<String[]>(),
+                callPeers = new ArrayList<String[]>();
+        final Map<String, float[]> hits = new LinkedHashMap<String, float[]>();
+
+        Hub(GuiScreen parent, String tab) {
+            this.parent = parent;
+            this.tab = tab;
+            command("refresh");
+        }
+
+        void command(String... parts) {
+            try {
+                StringBuilder line = new StringBuilder();
+                for (String part : parts)
+                    line.append(line.length() == 0 ? "" : "\t").append(escapeField(part));
+                File temporary = new File("antagon-ui-cmd.tmp");
+                Files.write(temporary.toPath(), line.toString().getBytes(StandardCharsets.UTF_8));
+                Files.move(
+                        temporary.toPath(),
+                        new File("antagon-ui-cmd-" + System.nanoTime() + ".txt").toPath(),
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                report(e);
+            }
+        }
+
+        void read() {
+            if (System.currentTimeMillis() - lastRead < 400) return;
+            lastRead = System.currentTimeMillis();
+            File file = new File("antagon-ui-state.txt");
+            if (!file.isFile()) return;
+            try {
+                List<String> lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
+                friends.clear();
+                incoming.clear();
+                outgoing.clear();
+                messages.clear();
+                items.clear();
+                callPeers.clear();
+                callStatus = callHost = "";
+                String stateChat = null;
+                for (String line : lines) {
+                    int eq = line.indexOf('=');
+                    if (eq < 0) continue;
+                    String key = line.substring(0, eq);
+                    String[] v = line.substring(eq + 1).split("\t", -1);
+                    for (int i = 0; i < v.length; i++) v[i] = unescapeField(v[i]);
+                    if (key.equals("updated")) updated = Long.parseLong(v[0]);
+                    else if (key.equals("online")) online = v[0].equals("1");
+                    else if (key.equals("me")) me = v[0];
+                    else if (key.equals("notice")) notice = v[0];
+                    else if (key.equals("friend") && v.length >= 6) friends.add(v);
+                    else if (key.equals("incoming") && v.length >= 2) incoming.add(v);
+                    else if (key.equals("outgoing") && v.length >= 2) outgoing.add(v);
+                    else if (key.equals("chat")) stateChat = v[0];
+                    else if (key.equals("msg") && v.length >= 3) messages.add(v);
+                    else if (key.equals("balance")) balance = Integer.parseInt(v[0]);
+                    else if (key.equals("item") && v.length >= 7) items.add(v);
+                    else if (key.equals("call") && v.length >= 3) {
+                        callStatus = v[0];
+                        callMuted = v[1].equals("1");
+                        callHost = v[2];
+                    } else if (key.equals("callpeer") && v.length >= 2) callPeers.add(v);
+                }
+                if (chat != null && !chat.equals(stateChat)) messages.clear();
+            } catch (Exception e) {
+                report(e);
+            }
+        }
+
+        boolean in(int mx, int my, float x, float y, float w, float h) {
+            return mx >= x && my >= y && mx < x + w && my < y + h;
+        }
+
+        void button(
+                String id,
+                String label,
+                float x,
+                float y,
+                float w,
+                float h,
+                int mx,
+                int my,
+                boolean primary) {
+            boolean hover = in(mx, my, x, y, w, h);
+            rect(
+                    x,
+                    y,
+                    w,
+                    h,
+                    primary ? (hover ? 0xFFFF3A3A : RED) : (hover ? 0xFF3C3C40 : 0xFF2C2C30));
+            text(label, x + (w - width(label)) / 2, y + h / 2 - 7.5f, WHITE);
+            hits.put(id, new float[] {x, y, w, h});
+        }
+
+        void field(String id, String value, String placeholder, float x, float y, float w) {
+            boolean active = id.equals(typing);
+            rect(x, y, w, 18, active ? 0xFF2A1416 : 0xFF121214);
+            outline(x, y, w, 18, active ? RED : 0xFF353539);
+            String shown = value.isEmpty() && !active ? placeholder : value;
+            if (active && System.currentTimeMillis() / 500 % 2 == 0) shown += "_";
+            String visible = shown;
+            while (visible.length() > 1 && width(visible) > w - 10) visible = visible.substring(1);
+            text(visible, x + 5, y + 2, value.isEmpty() && !active ? GRAY : WHITE);
+            hits.put("field:" + id, new float[] {x, y, w, 18});
+        }
+
+        String[] friend(String id) {
+            for (String[] f : friends) if (f[0].equals(id)) return f;
+            return null;
+        }
+
+        @Override
+        public boolean func_73868_f() {
+            return false;
+        }
+
+        @Override
+        public void func_73863_a(int mx, int my, float partial) {
+            try {
+                read();
+                hits.clear();
+                ms = Math.min(1, Math.min((field_146295_m - 8f) / H, (field_146294_l - 8f) / W));
+                begin(ms);
+                int w = (int) (field_146294_l / ms), h = (int) (field_146295_m / ms);
+                mx = (int) (mx / ms);
+                my = (int) (my / ms);
+                rect(0, 0, w, h, 0x99000000);
+                x0 = (w - W) / 2;
+                y0 = (h - H) / 2;
+                rect(x0 + 4, y0 + 5, W, H, 0x60000000);
+                rect(x0, y0, W, H, 0xFA19191C);
+                outline(x0, y0, W, H, 0xFF353539);
+                rect(x0 + 12, y0 + 8, 16, 16, accent());
+                text("P", x0 + 16, y0 + 8, WHITE);
+                text("PRIMARIX", x0 + 34, y0 + 8, WHITE);
+                String[] tabs = {"friends"}, labels = {"AMIGOS"};
+                for (int i = 0; i < tabs.length; i++) {
+                    float tx = x0 + 116 + i * 100, tw = 94;
+                    boolean active = tabs[i].equals(tab);
+                    rect(tx, y0 + 6, tw, 20, active ? 0xFF3A1A1C : 0xFF2C2C30);
+                    if (active) rect(tx, y0 + 24, tw, 2, RED);
+                    text(
+                            labels[i],
+                            tx + (tw - width(labels[i])) / 2,
+                            y0 + 8,
+                            active ? WHITE : GRAY);
+                    hits.put("tab:" + tabs[i], new float[] {tx, y0 + 6, tw, 20});
+                }
+                button("close", "X", x0 + W - 28, y0 + 6, 18, 20, mx, my, false);
+                rect(x0 + 10, y0 + 32, W - 20, 1, 0xFF303035);
+                boolean stale = updated == 0 || System.currentTimeMillis() - updated > 6000;
+                if (stale || !online) {
+                    String line =
+                            stale
+                                    ? "CONFIGURA EL LAUNCHER PRIMARIX PARA USAR AMIGOS."
+                                    : "INICIA SESIÓN CON MICROSOFT EN EL LAUNCHER.";
+                    text(line, x0 + (W - width(line)) / 2, y0 + H / 2 - 8, GRAY);
+                } else if (tab.equals("friends")) drawFriends(mx, my);
+                if (!notice.isEmpty()) text(fit(notice, W - 24), x0 + 12, y0 + H - 16, GRAY);
+            } catch (Throwable e) {
+                report(e);
+            } finally {
+                end();
+            }
+        }
+
+        void drawFriends(int mx, int my) throws Exception {
+            float lx = x0 + 10, lw = 170, top = y0 + 40;
+            field("add", addText, "NICK DEL AMIGO", lx, top, lw - 26);
+            button("add", "+", lx + lw - 22, top, 22, 18, mx, my, true);
+            List<String[]> rows = new ArrayList<String[]>();
+            if (!incoming.isEmpty()) rows.add(new String[] {"#", "PEDIDOS"});
+            for (String[] p : incoming) rows.add(new String[] {"in", p[0], p[1]});
+            int onlineCount = 0;
+            for (String[] f : friends) if (f[2].equals("1")) onlineCount++;
+            rows.add(new String[] {"#", "AMIGOS - " + onlineCount + " ONLINE"});
+            List<String[]> sorted = new ArrayList<String[]>(friends);
+            Collections.sort(
+                    sorted,
+                    (a, b) ->
+                            a[2].equals(b[2])
+                                    ? a[1].compareToIgnoreCase(b[1])
+                                    : b[2].compareTo(a[2]));
+            for (String[] f : sorted) rows.add(new String[] {"f", f[0]});
+            for (String[] p : outgoing) rows.add(new String[] {"out", p[0], p[1]});
+            float y = top + 26, bottom = y0 + H - 24;
+            float listEnd = callStatus.isEmpty() ? bottom : bottom - 50;
+            int max = Math.max(0, rows.size() - 8);
+            listScroll = Math.max(0, Math.min(listScroll, max));
+            for (int i = listScroll; i < rows.size() && y < listEnd - 18; i++) {
+                String[] row = rows.get(i);
+                if (row[0].equals("#")) {
+                    text(row[1], lx, y + 2, GRAY);
+                    y += 18;
+                } else if (row[0].equals("in") || row[0].equals("out")) {
+                    rect(lx, y, lw, 20, 0xFF232327);
+                    text(fit(row[2], lw - 60), lx + 6, y + 2, WHITE);
+                    if (row[0].equals("in")) {
+                        button("accept:" + row[1], "+", lx + lw - 44, y + 2, 20, 16, mx, my, true);
+                        button("remove:" + row[1], "X", lx + lw - 22, y + 2, 20, 16, mx, my, false);
+                    } else
+                        button("remove:" + row[1], "X", lx + lw - 22, y + 2, 20, 16, mx, my, false);
+                    y += 22;
+                } else {
+                    String[] f = friend(row[1]);
+                    boolean on = f[2].equals("1"), selected = f[0].equals(chat);
+                    rect(
+                            lx,
+                            y,
+                            lw,
+                            28,
+                            selected
+                                    ? 0xFF3A1A1C
+                                    : in(mx, my, lx, y, lw, 28) ? 0xFF2C2C30 : 0xFF232327);
+                    rect(lx + 6, y + 6, 4, 4, on ? 0xFF7BD66A : 0xFF55555A);
+                    text(fit(f[1], lw - 20), lx + 14, y + 1, on ? WHITE : GRAY);
+                    text(fit(activity(f), lw - 20), lx + 14, y + 13, GRAY);
+                    hits.put("friend:" + f[0], new float[] {lx, y, lw, 28});
+                    y += 30;
+                }
+            }
+            if (!callStatus.isEmpty()) drawCall(lx, listEnd - 4, lw, 50, mx, my);
+            float cx = x0 + 192, cw = W - 202;
+            rect(cx - 6, top, 1, bottom - top, 0xFF303035);
+            String[] f = chat == null ? null : friend(chat);
+            if (f == null) {
+                String line = "ESCOLHA UM AMIGO PARA CONVERSAR.";
+                text(line, cx + (cw - width(line)) / 2, y0 + H / 2 - 8, GRAY);
+                return;
+            }
+            text(f[1], cx, top + 1, WHITE);
+            text(fit(activity(f), cw - 70), cx, top + 13, GRAY);
+            if (f[3].equals("server") && !f[4].isEmpty())
+                button("join:" + f[4], "ENTRAR", cx + cw - 60, top, 60, 20, mx, my, true);
+            boolean inCall = false;
+            for (String[] p : callPeers) inCall |= p[0].equals(f[0]);
+            if (f[2].equals("1")
+                    && !inCall
+                    && !callStatus.equals("incoming")
+                    && callHost.equals(callStatus.isEmpty() ? "" : me)) {
+                String label = callStatus.isEmpty() ? "LIGAR" : "CHAMAR";
+                float bx = cx + cw - (f[3].equals("server") && !f[4].isEmpty() ? 126 : 60);
+                button("call:" + f[0], label, bx, top, 60, 20, mx, my, false);
+            }
+            rect(cx, top + 28, cw, 1, 0xFF303035);
+            List<String[]> lines = new ArrayList<String[]>();
+            for (String[] m : messages)
+                for (String part : wrap(m[2], cw - 24)) lines.add(new String[] {m[0], part});
+            float my2 = bottom - 38;
+            for (int i = lines.size() - 1; i >= 0 && my2 > top + 32; i--) {
+                String[] l = lines.get(i);
+                float tw = width(l[1]) + 10, bx = l[0].equals("1") ? cx + cw - tw : cx;
+                rect(bx, my2, tw, 14, l[0].equals("1") ? 0xFFB01212 : 0xFF2C2C30);
+                text(l[1], bx + 5, my2, WHITE);
+                my2 -= 16;
+            }
+            field("chat", chatText, "MENSAGEM", cx, bottom - 18, cw - 64);
+            button("send", "ENVIAR", cx + cw - 60, bottom - 18, 60, 18, mx, my, true);
+        }
+
+        String activity(String[] f) {
+            if (!f[2].equals("1")) return "OFFLINE";
+            if (f[3].equals("server")) return "JUGANDO EN " + f[4].toUpperCase();
+            if (f[3].equals("singleplayer")) return "UN JUGADOR";
+            if (f[3].equals("menu")) return "EN EL MENÚ";
+            if (f[3].equals("launcher")) return "EN EL LAUNCHER";
+            return "JUGANDO";
+        }
+
+        List<String> wrap(String text, float max) {
+            List<String> out = new ArrayList<String>();
+            for (String paragraph : text.split("\n")) {
+                String line = "";
+                for (String word : paragraph.split(" ")) {
+                    String next = line.isEmpty() ? word : line + " " + word;
+                    if (width(next) <= max || line.isEmpty()) line = next;
+                    else {
+                        out.add(line);
+                        line = word;
+                    }
+                    while (width(line) > max && line.length() > 1) {
+                        int cut = line.length() - 1;
+                        while (cut > 1 && width(line.substring(0, cut)) > max) cut--;
+                        out.add(line.substring(0, cut));
+                        line = line.substring(cut);
+                    }
+                }
+                out.add(line);
+            }
+            return out;
+        }
+
+        /**
+         * Cape previews show the outer face; custom capes are read from the launcher's download.
+         */
+        void preview(String[] item, float x, float y) throws Exception {
+            if (item[6].equals("hat")) {
+                image("crown-preview.png", x - 16, y + 18, 72, 32, 0, 0, 1, 1);
+                return;
+            }
+            String texture = item[0].equals("antagon_logo_cape") ? "logo-cape.png" : "cape.png";
+            if (item[0].startsWith("custom_")) {
+                texture = "file:antagon-capes/" + item[0] + ".png";
+                if (!new File(texture.substring(5)).isFile()) {
+                    rect(x, y, 40, 64, 0xFF2C2C30);
+                    return;
+                }
+            }
+            image(texture, x, y, 40, 64, 1 / 64f, 1 / 32f, 11 / 64f, 17 / 32f);
+        }
+
+        void drawCall(float x, float y, float w, float h, int mx, int my) {
+            rect(x, y, w, h, 0xFF1C2A1E);
+            rect(x, y, 2, h, 0xFF7BD66A);
+            if (callStatus.equals("incoming")) {
+                text(fit(callHost + " TE CHAMANDO", w - 12), x + 8, y + 2, WHITE);
+                button("callaccept", "ATENDER", x + 8, y + 24, 76, 20, mx, my, true);
+                button("calldecline", "RECUSAR", x + 88, y + 24, 76, 20, mx, my, false);
+                return;
+            }
+            StringBuilder names = new StringBuilder();
+            for (String[] p : callPeers)
+                if (!p[1].equals(me)) names.append(names.length() == 0 ? "" : ", ").append(p[1]);
+            text(
+                    fit(names.length() == 0 ? "CHAMANDO..." : "CALL: " + names, w - 12),
+                    x + 8,
+                    y + 2,
+                    WHITE);
+            button(
+                    "callmute",
+                    callMuted ? "DESMUTAR" : "MUTAR",
+                    x + 8,
+                    y + 24,
+                    76,
+                    20,
+                    mx,
+                    my,
+                    false);
+            button("callleave", "SAIR", x + 88, y + 24, 76, 20, mx, my, true);
+        }
+
+        void drawStore(int mx, int my, boolean inventory) throws Exception {
+            float top = y0 + 40;
+            image("store.png", x0 + 12, top, 16, 16, 0, 0, 1, 1);
+            text(
+                    (balance < 0 ? "--" : String.valueOf(balance)) + " ANTAGOIN$",
+                    x0 + 32,
+                    top + 1,
+                    WHITE);
+            List<String[]> shown = new ArrayList<String[]>();
+            for (String[] item : items)
+                if ((inventory ? item[3] : item[5]).equals("1")) shown.add(item);
+            int per = 4, pages = Math.max(1, (shown.size() + per - 1) / per);
+            page = Math.max(0, Math.min(page, pages - 1));
+            if (pages > 1) {
+                String label = (page + 1) + "/" + pages;
+                text(label, x0 + W - 58 - width(label), top + 1, GRAY);
+                button("page:-1", "<", x0 + W - 52, top - 2, 18, 18, mx, my, false);
+                button("page:1", ">", x0 + W - 30, top - 2, 18, 18, mx, my, false);
+            }
+            float cardW = 100, cardH = inventory ? 176 : 150, gap = 8, cy = top + 24;
+            if (shown.isEmpty()) {
+                String line =
+                        inventory
+                                ? "VOCÊ AINDA NÃO TEM COSMÉTICOS."
+                                : "NENHUM ITEM À VENDA NO MOMENTO.";
+                text(line, x0 + (W - width(line)) / 2, cy + 50, GRAY);
+            }
+            float cx = x0 + (W - (per * cardW + (per - 1) * gap)) / 2;
+            for (int i = page * per; i < Math.min(shown.size(), page * per + per); i++) {
+                String[] item = shown.get(i);
+                boolean owned = item[3].equals("1"), equipped = item[4].equals("1");
+                rect(cx, cy, cardW, cardH, 0xFF232327);
+                outline(cx, cy, cardW, cardH, equipped ? RED : 0xFF303035);
+                preview(item, cx + (cardW - 40) / 2, cy + 8);
+                List<String> name = wrap(item[1].toUpperCase(), cardW - 10);
+                for (int l = 0; l < Math.min(2, name.size()); l++)
+                    text(name.get(l), cx + 6, cy + 76 + l * 13, WHITE);
+                String state =
+                        equipped ? "EQUIPADO" : owned ? "NO INVENTÁRIO" : item[2] + " ANTAGOIN$";
+                text(fit(state, cardW - 10), cx + 6, cy + 104, equipped ? RED : GRAY);
+                String label = equipped ? "TIRAR" : owned ? "EQUIPAR" : "COMPRAR";
+                String action =
+                        equipped
+                                ? "unequip:" + item[6]
+                                : owned ? "equip:" + item[0] : "buy:" + item[0];
+                button(action, label, cx + 6, cy + cardH - 26, cardW - 12, 20, mx, my, !equipped);
+                cx += cardW + gap;
+            }
+            if (inventory) return;
+            String[][] packs = {
+                {"small", "100", "R$ 4,90"},
+                {"medium", "550", "R$ 19,90"},
+                {"large", "1.200", "R$ 39,90"}
+            };
+            float py = cy + cardH + 12;
+            text("COMPRAR ANTAGOIN$ (ABRE NO NAVEGADOR)", x0 + 12, py, GRAY);
+            for (int i = 0; i < packs.length; i++)
+                button(
+                        "coins:" + packs[i][0],
+                        packs[i][1] + " ANTAGOIN$  " + packs[i][2],
+                        x0 + 12 + i * 146,
+                        py + 14,
+                        140,
+                        20,
+                        mx,
+                        my,
+                        false);
+        }
+
+        void submit() {
+            if ("add".equals(typing) && !addText.trim().isEmpty()) {
+                command("add", addText.trim());
+                addText = "";
+            } else if ("chat".equals(typing) && chat != null && !chatText.trim().isEmpty()) {
+                command("send", chat, chatText.trim());
+                chatText = "";
+            }
+        }
+
+        @Override
+        protected void func_73869_a(char c, int key) {
+            if (typing != null) {
+                boolean paste =
+                        key == Keyboard.KEY_V
+                                && (Keyboard.isKeyDown(Keyboard.KEY_LMETA)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_RMETA)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_LCONTROL)
+                                        || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL));
+                String value = typing.equals("add") ? addText : chatText;
+                int limit = typing.equals("add") ? 16 : 500;
+                if (key == Keyboard.KEY_ESCAPE) typing = null;
+                else if (key == Keyboard.KEY_RETURN) submit();
+                else if (key == Keyboard.KEY_BACK) {
+                    if (!value.isEmpty()) value = value.substring(0, value.length() - 1);
+                } else if (paste) value += Spotify.clipboard().replaceAll("[\\p{Cntrl}]", " ");
+                else if (c >= 32 && c != 127 && c != 167) value += c;
+                if (value.length() > limit) value = value.substring(0, limit);
+                if (typing != null && typing.equals("add"))
+                    addText = value.replaceAll("[^A-Za-z0-9_]", "");
+                else if (typing != null) chatText = value;
+                return;
+            }
+            if (key == Keyboard.KEY_ESCAPE) close();
+        }
+
+        @Override
+        public void func_146274_d() throws IOException {
+            super.func_146274_d();
+            int wheel = Mouse.getEventDWheel();
+            if (wheel != 0) listScroll += wheel > 0 ? -1 : 1;
+        }
+
+        void close() {
+            try {
+                call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, parent);
+            } catch (Exception e) {
+                report(e);
+            }
+        }
+
+        @Override
+        protected void func_73864_a(int mx, int my, int mouseButton) {
+            if (mouseButton != 0) return;
+            mx = (int) (mx / ms);
+            my = (int) (my / ms);
+            String hit = null;
+            for (Map.Entry<String, float[]> e : hits.entrySet()) {
+                float[] b = e.getValue();
+                if (in(mx, my, b[0], b[1], b[2], b[3])) hit = e.getKey();
+            }
+            typing = null;
+            if (hit == null) return;
+            if (hit.equals("close")) close();
+            else if (hit.startsWith("tab:")) {
+                tab = hit.substring(4);
+                page = 0;
+            } else if (hit.startsWith("field:")) typing = hit.substring(6);
+            else if (hit.equals("add")) {
+                typing = "add";
+                submit();
+                typing = null;
+            } else if (hit.equals("send")) {
+                typing = "chat";
+                submit();
+            } else if (hit.startsWith("friend:")) {
+                chat = hit.substring(7);
+                messages.clear();
+                command("chat", chat);
+                typing = "chat";
+            } else if (hit.startsWith("accept:")) command("accept", hit.substring(7));
+            else if (hit.startsWith("remove:")) command("remove", hit.substring(7));
+            else if (hit.startsWith("buy:")) command("buy", hit.substring(4));
+            else if (hit.startsWith("equip:")) command("equip", hit.substring(6));
+            else if (hit.startsWith("unequip:")) command("unequip", hit.substring(8));
+            else if (hit.startsWith("page:")) page += Integer.parseInt(hit.substring(5));
+            else if (hit.startsWith("coins:")) command("coins", hit.substring(6));
+            else if (hit.startsWith("join:")) joinServer(hit.substring(5));
+            else if (hit.startsWith("call:")) command("call", hit.substring(5));
+            else if (hit.equals("callaccept")) command("call-accept");
+            else if (hit.equals("calldecline")) command("call-decline");
+            else if (hit.equals("callmute")) command("call-mute");
+            else if (hit.equals("callleave")) command("call-leave");
+        }
+    }
+
+    @SubscribeEvent
+    public void nametag(RenderPlayerEvent.Post event) {
+        try {
+            Object player = field(event, "entityPlayer");
+            boolean self = player == field(mc, "field_71439_g", "thePlayer");
+            int view =
+                    ((Number)
+                                    field(
+                                            field(mc, "field_71474_y", "gameSettings"),
+                                            "field_74320_O",
+                                            "thirdPersonView"))
+                            .intValue();
+            if (self && (view == 0 || field(mc, "field_71462_r", "currentScreen") != null)) return;
+            if ((Boolean) call(player, new String[] {"func_82150_aj", "isInvisible"})) return;
+            String tag = Cosmetics.tagFor(player);
+            boolean own = self && enabled("ownnametag");
+            double x = event.x, y = event.y, z = event.z, distance = x * x + y * y + z * z;
+            if (distance > 64 * 64) return;
+            double scale = 0.02666667, line = 10 * scale;
+            double base =
+                    y + ((Number) field(player, "field_70131_O", "height")).floatValue() + 0.5;
+            Object board =
+                    call(
+                            field(mc, "field_71441_e", "theWorld"),
+                            new String[] {"func_96441_U", "getScoreboard"});
+            if (distance < 100
+                    && call(board, new String[] {"func_96539_a", "getObjectiveInDisplaySlot"}, 2)
+                            != null) base += 9 * 1.15 * scale;
+            if (own) {
+                Object name = call(player, new String[] {"func_145748_c_", "getDisplayName"});
+                String ownName =
+                        Cosmetics.localAlias().isEmpty()
+                                ? (String) call(name, new String[] {"func_150254_d", "getFormattedText"})
+                                : Cosmetics.localAlias();
+                billboard(
+                        x,
+                        base,
+                        z,
+                        ownName,
+                        view);
+            }
+            if (tag != null) billboard(x, base + line, z, tag, view);
+            if (enabled("damageindicator"))
+                damageIndicator(
+                        player,
+                        x,
+                        base + line * ((own ? 1 : 0) + (tag != null ? 1 : 0)) + 0.3,
+                        z,
+                        view,
+                        distance,
+                        self);
+            if (!own && tag == null) return;
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    private float entityHealth(Object entity) throws Exception {
+        return ((Number) call(entity, new String[] {"func_110143_aJ", "getHealth"})).floatValue();
+    }
+
+    private void damageIndicator(
+            Object player,
+            double x,
+            double y,
+            double z,
+            int view,
+            double distance,
+            boolean self)
+            throws Exception {
+        if (self) return;
+        int range = 32;
+        try {
+            range = Integer.parseInt(opt("damageindicator", "range"));
+        } catch (NumberFormatException ignored) {
+        }
+        if (distance > range * (double) range) return;
+        float health = entityHealth(player);
+        float maximum =
+                ((Number) call(player, new String[] {"func_110138_aP", "getMaxHealth"})).floatValue();
+        String display = opt("damageindicator", "display");
+        if (display.equals("vida") || display.equals("porcentaje")) {
+            billboard(
+                    x,
+                    y,
+                    z,
+                    "\u00a7c\u2764 \u00a7f" + DamageIndicatorDisplay.label(display, health, maximum),
+                    view,
+                    flag("damageindicator", "bg"));
+            return;
+        }
+        float absorption =
+                flag("damageindicator", "absorption")
+                        ? ((Number)
+                                        call(
+                                                player,
+                                                new String[] {
+                                                    "func_110139_bj", "getAbsorptionAmount"
+                                                }))
+                                .floatValue()
+                        : 0;
+        drawDamageHearts(x, y, z, health, maximum, absorption, view);
+    }
+
+    private void drawDamageHearts(
+            double x,
+            double y,
+            double z,
+            float health,
+            float maximum,
+            float absorption,
+            int view)
+            throws Exception {
+        Object renderManager = call(mc, new String[] {"func_175598_ae", "getRenderManager"});
+        float size = percent("damageindicator", "size");
+        int healthCount = Math.max(1, Math.min(20, (int) Math.ceil(maximum / 2f)));
+        int absorptionCount = Math.max(0, Math.min(20, (int) Math.ceil(absorption / 2f)));
+        int count = healthCount + absorptionCount;
+        float unit = 0.72f, step = 6.5f, width = (count - 1) * step + HEART_MASK[0].length() * unit;
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GL11.glPushMatrix();
+        try {
+            GL11.glTranslated(x, y, z);
+            GL11.glNormal3f(0, 1, 0);
+            GL11.glRotatef(-getF(renderManager, "field_78735_i"), 0, 1, 0);
+            GL11.glRotatef((view == 2 ? -1 : 1) * getF(renderManager, "field_78732_j"), 1, 0, 0);
+            float scale = 0.013333335f * size;
+            GL11.glScalef(-scale, -scale, scale);
+            GL11.glDisable(GL11.GL_LIGHTING);
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            GL11.glDisable(GL11.GL_TEXTURE_2D);
+            if (flag("damageindicator", "bg")) rect(-width / 2 - 3, -2, width + 6, 8, 0x99000000);
+            float left = -width / 2;
+            for (int heart = 0; heart < count; heart++) {
+                boolean gold = heart >= healthCount;
+                int heartIndex = gold ? heart - healthCount : heart;
+                float points = (gold ? absorption : health) - heartIndex * 2f;
+                int full = gold ? 0xFFFFD34A : 0xFFFF343F;
+                int empty = gold ? 0xFF604E20 : 0xFF54252A;
+                for (int row = 0; row < HEART_MASK.length; row++) {
+                    for (int column = 0; column < HEART_MASK[row].length(); column++) {
+                        if (HEART_MASK[row].charAt(column) != '1') continue;
+                        int color =
+                                points >= 2
+                                        ? full
+                                        : points > 0 && column < HEART_MASK[row].length() / 2
+                                                ? full
+                                                : empty;
+                        rect(
+                                left + heart * step + column * unit,
+                                row * unit,
+                                unit,
+                                unit,
+                                color);
+                    }
+                }
+            }
+        } finally {
+            GL11.glPopMatrix();
+            GL11.glPopAttrib();
+        }
+    }
+
+    /**
+     * Vanilla's nametag drawing, done only through GlStateManager so its state cache stays true.
+     */
+    private void billboard(double x, double y, double z, String text, int view) throws Exception {
+        billboard(x, y, z, text, view, true);
+    }
+
+    private void billboard(double x, double y, double z, String text, int view, boolean background)
+            throws Exception {
+        Object rm = call(mc, new String[] {"func_175598_ae", "getRenderManager"});
+        Object font = field(mc, "field_71466_p", "fontRendererObj");
+        Class<?> gl = Class.forName("net.minecraft.client.renderer.GlStateManager");
+        GL11.glPushMatrix();
+        GL11.glTranslated(x, y, z);
+        GL11.glNormal3f(0, 1, 0);
+        GL11.glRotatef(-getF(rm, "field_78735_i"), 0, 1, 0);
+        GL11.glRotatef((view == 2 ? -1 : 1) * getF(rm, "field_78732_j"), 1, 0, 0);
+        GL11.glScalef(-0.02666667f, -0.02666667f, 0.02666667f);
+        invoke(gl, null, new String[] {"func_179140_f", "disableLighting"});
+        invoke(gl, null, new String[] {"func_179132_a", "depthMask"}, false);
+        invoke(gl, null, new String[] {"func_179097_i", "disableDepth"});
+        invoke(gl, null, new String[] {"func_179147_l", "enableBlend"});
+        invoke(gl, null, new String[] {"func_179120_a", "tryBlendFuncSeparate"}, 770, 771, 1, 0);
+        int half = stringWidth(font, text) / 2;
+        if (background) {
+            invoke(gl, null, new String[] {"func_179090_x", "disableTexture2D"});
+            invoke(gl, null, new String[] {"func_179131_c", "color"}, 0f, 0f, 0f, 0.25f);
+            GL11.glBegin(GL11.GL_QUADS);
+            GL11.glVertex3f(-half - 1, -1, 0);
+            GL11.glVertex3f(-half - 1, 8, 0);
+            GL11.glVertex3f(half + 1, 8, 0);
+            GL11.glVertex3f(half + 1, -1, 0);
+            GL11.glEnd();
+        }
+        invoke(gl, null, new String[] {"func_179098_w", "enableTexture2D"});
+        drawString(font, text, -half, 0, 0x20FFFFFF);
+        invoke(gl, null, new String[] {"func_179126_j", "enableDepth"});
+        invoke(gl, null, new String[] {"func_179132_a", "depthMask"}, true);
+        drawString(font, text, -half, 0, -1);
+        invoke(gl, null, new String[] {"func_179145_e", "enableLighting"});
+        invoke(gl, null, new String[] {"func_179084_k", "disableBlend"});
+        invoke(gl, null, new String[] {"func_179131_c", "color"}, 1f, 1f, 1f, 1f);
+        GL11.glPopMatrix();
+    }
+
+    private void joinServer(String server) {
+        if (!server.matches("[A-Za-z0-9.-]{1,253}(:\\d{1,5})?")) return;
+        try {
+            Object data =
+                    Class.forName("net.minecraft.client.multiplayer.ServerData")
+                            .getConstructor(String.class, String.class, boolean.class)
+                            .newInstance("Primarix Client", server, false);
+            Object world = field(mc, "field_71441_e", "theWorld");
+            if (world != null) {
+                call(world, new String[] {"func_72882_A", "sendQuittingDisconnectingPacket"});
+                call(mc, new String[] {"func_71403_a", "loadWorld"}, (Object) null);
+            }
+            Object fml =
+                    invoke(
+                            Class.forName("net.minecraftforge.fml.client.FMLClientHandler"),
+                            null,
+                            new String[] {"instance"});
+            Object title = Class.forName("net.minecraft.client.gui.GuiMainMenu").newInstance();
+            call(fml, new String[] {"connectToServer"}, title, data);
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+}
