@@ -9,18 +9,19 @@ com Forge, e um mod próprio adiciona HUD, mods de PvP e um menu no **Shift dire
 
 Baixe a versão mais recente em [Releases](https://github.com/MEDRANDAAAA/primarix-client/releases/latest):
 
-- **Windows:** `Primarix-Client-Portable-x.y.z.exe`. Se o SmartScreen avisar, clique em **Mais informações → Executar
-  assim mesmo**.
+- **Windows (recomendado):** `Primarix-Client-Setup-x.y.z.exe`. Instale uma vez e abra **Primarix Client** pelo atalho;
+  o launcher instalará as atualizações seguintes na mesma instalação e voltará a abrir.
+- **Windows portable:** `Primarix-Client-Portable-x.y.z.exe`, para usar sem instalar. As atualizações continuam usando o
+  executável portable original.
 
-O app para Windows não é assinado por uma conta paga da Microsoft, por isso o aviso do SmartScreen na primeira abertura.
+Quem já usa o portable e quer mudar para o instalador precisa executar o arquivo **Setup** uma vez. O app para Windows
+não é assinado por uma conta paga da Microsoft, por isso o aviso do SmartScreen pode aparecer na primeira abertura.
 
 Ao abrir, o launcher compara sua versão com a última GitHub Release e mostra **Atualizar para x.y.z** quando há uma versão
 mais nova. Para distribuir uma atualização Windows, aumente `version` em `package.json` e envie a tag correspondente ao
-repositório (por exemplo, `v0.1.41` para a versão `0.1.41`). O workflow `.github/workflows/publish-release.yml`
-compila, testa e publica automaticamente `Primarix-Client-Portable-0.1.41.exe`. Ao abrir o launcher ou clicar no botão
-de atualização, seus amigos podem instalar a nova versão sem baixar ou substituir o executável manualmente; o launcher
-verifica o SHA-256 e reinicia já atualizado. Minecraft precisa estar fechado para instalar. As versões que consultam a
-mesma GitHub Release recebem as versões publicadas ali.
+repositório. O workflow `.github/workflows/publish-release.yml` testa, compila e publica o Setup e o portable. O launcher
+verifica o SHA-256; no Setup, executa o instalador silenciosamente sobre a instalação existente e reabre o launcher. No
+portable, substitui e reabre o executável original. Minecraft precisa estar fechado para instalar.
 
 | Amigos e chat | Menu no jogo (Shift direito) |
 | --- | --- |

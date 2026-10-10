@@ -35,6 +35,75 @@ test('Windows updates select the versioned portable executable and require a SHA
   );
 });
 
+test('Windows installations select the versioned NSIS installer instead of the portable executable', () => {
+  const release = {
+    tag_name: 'v0.1.39',
+    assets: [asset('Primarix-Client-Portable-0.1.39.exe'), asset('Primarix-Client-Setup-0.1.39.exe')],
+  };
+  assert.equal(
+    updater.releaseAsset(release, 'win32', '0.1.38', 'installed').assetName,
+    'Primarix-Client-Setup-0.1.39.exe',
+  );
+  assert.equal(
+    updater.releaseAsset(release, 'win32', '0.1.38', 'portable').assetName,
+    'Primarix-Client-Portable-0.1.39.exe',
+  );
+  assert.equal(
+    updater.releaseAsset({ ...release, assets: [release.assets[1]] }, 'win32', '0.1.38', 'installed').format,
+    'nsis-installer',
+  );
+});
+
+test('NSIS updater waits for the running launcher and verifies the installed version before restart', () => {
+  assert.match(updater.windowsInstallerSwap, /WaitForExit\(300000\)/);
+  assert.match(
+    updater.windowsInstallerSwap,
+    /Start-Process -FilePath \$Installer -ArgumentList \$InstallerArguments -Wait/,
+  );
+  assert.match(updater.windowsInstallerSwap, /La versión instalada no coincide/);
+  assert.match(updater.windowsInstallerSwap, /Start-Process -FilePath \$Target/);
+});
+
+test('Windows NSIS updater waits for its installer and reports success', (t) => {
+  if (process.platform !== 'win32') return t.skip('Windows NSIS updater integration test.');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'primarix-nsis-update-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const script = path.join(root, 'install-update.ps1');
+  const marker = path.join(root, 'installer-ran.txt');
+  const logDirectory = path.join(root, 'Primarix Client', 'logs');
+  fs.writeFileSync(script, `\uFEFF${updater.windowsInstallerSwap}`, 'utf8');
+
+  execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      script,
+      '-ProcessId',
+      '2147483647',
+      '-Installer',
+      process.env.ComSpec || 'cmd.exe',
+      '-InstallerArguments',
+      '/d /c echo installed > "%PRIMARIX_TEST_MARKER%"',
+      '-Target',
+      process.execPath,
+      '-Version',
+      '',
+      '-NoRestart',
+    ],
+    {
+      stdio: 'pipe',
+      timeout: 30_000,
+      env: { ...process.env, APPDATA: root, PRIMARIX_TEST_MARKER: marker },
+    },
+  );
+
+  assert.match(fs.readFileSync(marker, 'utf8'), /installed/);
+  assert.match(fs.readFileSync(path.join(logDirectory, 'updater.log'), 'utf8'), /Actualización instalada/);
+});
+
 test('release assets keep legacy Windows and macOS package support', () => {
   assert.equal(
     updater.releaseAsset({ tag_name: '0.1.39', assets: [asset('Antagon-Client-Windows.zip')] }, 'win32', '0.1.38')

@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  windows-portable:
-    name: Build and publish Windows portable
+  windows-release:
+    name: Build and publish Windows launchers
     runs-on: windows-2022
     steps:
       - name: Check out tagged source
@@ -82,8 +82,8 @@ jobs:
           npm run test:ui
           npm run test:java
 
-      - name: Build portable client
-        run: npm run package:portable
+      - name: Build portable and installer clients
+        run: npm run package:release
 
       - name: Publish GitHub release for the updater
         uses: softprops/action-gh-release@v2
@@ -91,4 +91,6 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Primarix Client ${{ github.ref_name }}
           generate_release_notes: true
-          files: release-primarix-portable/Primarix-Client-Portable-${{ steps.version.outputs.version }}.exe
+          files: |
+            release-primarix-portable/Primarix-Client-Portable-${{ steps.version.outputs.version }}.exe
+            release-primarix-portable/Primarix-Client-Setup-${{ steps.version.outputs.version }}.exe

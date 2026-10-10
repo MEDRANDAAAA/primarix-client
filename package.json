@@ -1,7 +1,7 @@
 {
   "name": "primarix-client",
   "productName": "Primarix Launcher",
-  "version": "0.1.46",
+  "version": "0.1.47",
   "description": "Launcher y cliente PvP de Minecraft 1.8.9 con HUD configurable.",
   "main": "electron/main.cjs",
   "author": "Annth",
@@ -21,6 +21,8 @@
     "package:win": "electron-packager . --platform=win32 --arch=x64 --out=release --overwrite --ignore=release --ignore=build --ignore=tests --ignore=docs --ignore=scripts --ignore=mod-src",
     "prepackage:portable": "npm run build:mod && npm run build:glass-pack",
     "package:portable": "electron-builder --win portable --x64",
+    "package:installer": "electron-builder --win nsis --x64",
+    "package:release": "npm run package:portable && npm run package:installer",
     "test:java": "node scripts/test-java.cjs",
     "format:check": "prettier --check .",
     "test:discord": "node scripts/test-discord.cjs",
@@ -77,6 +79,16 @@
     },
     "portable": {
       "artifactName": "Primarix-Client-Portable-${version}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "Primarix-Client-Setup-${version}.${ext}",
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "runAfterFinish": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Primarix Client"
     }
   }
 }

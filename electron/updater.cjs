@@ -98,8 +98,48 @@ try {
 }
 `;
 
+const WINDOWS_INSTALLER_SWAP = `param([int]$ProcessId, [string]$Installer, [string]$InstallerArguments = '/S', [string]$Target, [string]$Version, [switch]$NoRestart)
+$ErrorActionPreference = 'Stop'
+$logDirectory = Join-Path $env:APPDATA 'Primarix Client\\logs'
+New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+$logFile = Join-Path $logDirectory 'updater.log'
+function Write-UpdateLog([string]$Message) {
+  Add-Content -LiteralPath $logFile -Value "$(Get-Date -Format o) $Message" -Encoding UTF8
+}
+try {
+  Write-UpdateLog "Actualizador NSIS iniciado para $Target; versión esperada $Version."
+  if ($ProcessId -gt 0 -and $ProcessId -ne $PID) {
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if ($process -and -not $process.WaitForExit(300000)) {
+      throw "El proceso de Primarix $ProcessId no se cerró a tiempo."
+    }
+  }
+  if (-not (Test-Path -LiteralPath $Target)) { throw "No se encontró el launcher instalado: $Target." }
+  $installerProcess = Start-Process -FilePath $Installer -ArgumentList $InstallerArguments -Wait -PassThru
+  if ($installerProcess.ExitCode -ne 0) {
+    throw "El instalador terminó con código $($installerProcess.ExitCode)."
+  }
+  $installedVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($Target).ProductVersion
+  if ($Version -and $installedVersion -notmatch "(^|\\.)$([regex]::Escape($Version))($|\\.)") {
+    throw "La versión instalada no coincide: se esperaba $Version y se encontró $installedVersion."
+  }
+  if (-not $NoRestart) { Start-Process -FilePath $Target -WorkingDirectory (Split-Path -Parent $Target) }
+  Write-UpdateLog "Actualización instalada y Primarix reiniciado. Versión: $Version."
+} catch {
+  Write-UpdateLog "Error al actualizar con NSIS: $($_.Exception.Message)"
+  if (-not $NoRestart -and (Test-Path -LiteralPath $Target)) {
+    try { Start-Process -FilePath $Target -WorkingDirectory (Split-Path -Parent $Target) }
+    catch { Write-UpdateLog "No se pudo reabrir Primarix: $($_.Exception.Message)" }
+  }
+  exit 1
+}
+`;
+
 const ASSET_NAMES = {
-  win32: ['Primarix-Client-Portable-{version}.exe', 'Antagon-Client-Windows.zip', 'Primarix-Launcher-Windows.zip'],
+  win32: {
+    portable: ['Primarix-Client-Portable-{version}.exe', 'Antagon-Client-Windows.zip', 'Primarix-Launcher-Windows.zip'],
+    installed: ['Primarix-Client-Setup-{version}.exe'],
+  },
   darwin: ['Antagon-Client-macOS.zip', 'Primarix-Launcher-macOS.zip'],
 };
 
@@ -115,30 +155,40 @@ function newer(latest, current) {
   return false;
 }
 
-function releaseAsset(release, platform, current) {
+function releaseAsset(release, platform, current, distribution = 'portable') {
   if (!newer(release.tag_name, current)) return null;
   const version = release.tag_name.replace(/^v/, '');
-  const names = (ASSET_NAMES[platform] || []).map((name) => name.replace('{version}', version));
+  const candidates =
+    platform === 'win32' ? ASSET_NAMES.win32[distribution] || ASSET_NAMES.win32.portable : ASSET_NAMES[platform] || [];
+  const names = candidates.map((name) => name.replace('{version}', version));
   const asset = names.map((name) => release.assets?.find((item) => item.name === name)).find(Boolean);
   if (!asset || !/^sha256:[a-f0-9]{64}$/.test(asset.digest || '')) return null;
   return {
     version,
     assetName: asset.name,
-    format: asset.name.endsWith('.exe') ? 'portable-exe' : 'archive',
+    format: asset.name.startsWith('Primarix-Client-Setup-')
+      ? 'nsis-installer'
+      : asset.name.endsWith('.exe')
+        ? 'portable-exe'
+        : 'archive',
     url: asset.browser_download_url,
     sha256: asset.digest.slice(7),
     size: asset.size,
   };
 }
 
-async function check(current, platform = process.platform) {
+async function check(
+  current,
+  platform = process.platform,
+  distribution = process.env.PORTABLE_EXECUTABLE_FILE ? 'portable' : 'installed',
+) {
   const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
     headers: { accept: 'application/vnd.github+json' },
     signal: AbortSignal.timeout(1e4),
   });
   if (!res.ok) throw Error('GitHub indisponível.');
   const release = await res.json();
-  return releaseAsset(release, platform, current);
+  return releaseAsset(release, platform, current, distribution);
 }
 
 async function download(update, file, progress) {
@@ -199,6 +249,33 @@ async function install(update, progress) {
       stdio: 'ignore',
       windowsHide: true,
     });
+  } else if (process.platform === 'win32' && update.format === 'nsis-installer') {
+    const installerSwap = path.join(dir, 'install-update.ps1');
+    await fsp.writeFile(installerSwap, `\uFEFF${WINDOWS_INSTALLER_SWAP}`, 'utf8');
+    const args = [
+      '-NoProfile',
+      '-WindowStyle',
+      'Hidden',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      installerSwap,
+      '-ProcessId',
+      String(process.pid),
+      '-Installer',
+      archive,
+      '-InstallerArguments',
+      '/S',
+      '-Target',
+      process.execPath,
+      '-Version',
+      update.version,
+    ];
+    await launchDetached('powershell.exe', args, {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
   } else if (process.platform === 'win32') {
     await fsp.mkdir(unpacked);
     await extract(archive, unpacked);
@@ -247,6 +324,7 @@ module.exports = {
   releaseAsset,
   findWindowsApp,
   windowsPortableSwap: WINDOWS_PORTABLE_SWAP,
+  windowsInstallerSwap: WINDOWS_INSTALLER_SWAP,
   repository: REPO,
   configured: !!REPO,
 };
