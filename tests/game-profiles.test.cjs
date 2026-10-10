@@ -8,7 +8,7 @@ test('in-game nick commands create and select offline profiles', () => {
   assert.equal(added.settings.nickname, 'PvP_Alt');
   assert.equal(added.settings.mode, 'offline');
   assert.deepEqual(added.settings.quickNicknames, ['PvP_Alt']);
-  assert.match(added.message, /próxima conexión Offline/);
+  assert.match(added.message, /Sal al menú principal/);
 
   const selected = applyCommand(
     { ...added.settings, quickNicknames: [...added.settings.quickNicknames, 'MainNick'] },
@@ -17,7 +17,7 @@ test('in-game nick commands create and select offline profiles', () => {
   );
   assert.equal(selected.settings.nickname, 'MainNick');
   assert.equal(selected.settings.mode, 'offline');
-  assert.match(selected.message, /próxima conexión Offline/);
+  assert.match(selected.message, /Sal al menú principal/);
 });
 
 test('in-game nick commands remove a saved profile and reset the active nick', () => {

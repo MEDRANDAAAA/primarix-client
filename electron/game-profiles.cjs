@@ -26,7 +26,7 @@ function applyCommand(settings, command, nickname) {
     if (current.quickNicknames.includes(nickname))
       return {
         settings: { ...current, nickname, mode: 'offline' },
-        message: `${nickname} ya estaba guardado; quedó seleccionado.`,
+        message: `${nickname} seleccionado. Sal al menú principal y vuelve a entrar; la partida actual no cambia.`,
       };
     if (current.quickNicknames.length >= 8) throw Error('Ya guardaste el máximo de 8 nicks.');
     return {
@@ -36,7 +36,7 @@ function applyCommand(settings, command, nickname) {
         mode: 'offline',
         quickNicknames: [...current.quickNicknames, nickname],
       },
-      message: `${nickname} quedó seleccionado para tu próxima conexión Offline.`,
+      message: `${nickname} seleccionado. Sal al menú principal y vuelve a entrar; la partida actual no cambia.`,
     };
   }
 
@@ -45,7 +45,7 @@ function applyCommand(settings, command, nickname) {
       throw Error('Ese nick no está guardado.');
     return {
       settings: { ...current, nickname, mode: 'offline' },
-      message: `${nickname} quedó seleccionado para tu próxima conexión Offline.`,
+      message: `${nickname} seleccionado. Sal al menú principal y vuelve a entrar; la partida actual no cambia.`,
     };
   }
 

@@ -555,7 +555,7 @@ $('#quick-nicknames').addEventListener('click', async (event) => {
     $('#account-dialog').close();
     toast(
       gameRunning
-        ? `Nick ${settings.nickname} guardado. Cierra y vuelve a iniciar Minecraft para aplicar el cambio.`
+        ? `Nick ${settings.nickname} guardado. Sal al menú principal y vuelve a entrar al servidor para aplicarlo.`
         : `Ahora jugarás con el nick ${settings.nickname}.`,
     );
   } catch (error) {

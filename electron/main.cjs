@@ -505,7 +505,7 @@ async function gameAction() {
           } else {
             const result = applyGameProfileCommand(settings, command, nickname);
             saveSettings(result.settings);
-            message = `${settings.nickname} seleccionado. Minecraft usará este nick Offline en tu próxima conexión.`;
+            message = `${settings.nickname} seleccionado. Sal al menú principal y vuelve a entrar; la partida actual no cambia.`;
           }
           publishGameProfiles(message);
           if (win && !win.isDestroyed() && !win.webContents.isDestroyed())
