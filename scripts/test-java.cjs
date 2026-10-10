@@ -10,6 +10,8 @@ execFileSync(
   [
     '--release',
     '8',
+    '-encoding',
+    'UTF-8',
     '-d',
     out,
     path.join(root, 'mod-src/studio/antagon/Reflect.java'),
