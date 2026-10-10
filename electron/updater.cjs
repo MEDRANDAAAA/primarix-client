@@ -36,14 +36,29 @@ if errorlevel 8 exit /b 1
 start "" "%EXECUTABLE%"
 `;
 
-const WINDOWS_PORTABLE_SWAP = `param([int]$ProcessId, [string]$Source, [string]$Target)
+const WINDOWS_PORTABLE_SWAP = `param([int]$ProcessId, [string]$Source, [string]$Target, [switch]$NoRestart)
 $ErrorActionPreference = 'Stop'
 $temporary = "$Target.update"
-$backup = "$Target.previous"
+$backup = "$Target.previous.$([guid]::NewGuid().ToString('N'))"
+$logFile = "$Target.update.log"
+function Write-UpdateLog([string]$Message) {
+  Add-Content -LiteralPath $logFile -Value "$(Get-Date -Format o) $Message" -Encoding UTF8
+}
 try {
   $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-if ($process -and -not $process.WaitForExit(300000)) { throw 'Primarix no se cerró a tiempo.' }
+  if ($process -and -not $process.WaitForExit(300000)) { throw 'Primarix no se cerró a tiempo.' }
   Copy-Item -LiteralPath $Source -Destination $temporary -Force
+  $deadline = [DateTime]::UtcNow.AddMinutes(2)
+  while ($true) {
+    try {
+      $file = [System.IO.File]::Open($Target, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+      $file.Dispose()
+      break
+    } catch [System.IO.IOException] {
+      if ([DateTime]::UtcNow -ge $deadline) { throw 'El ejecutable portable sigue en uso; se canceló el reemplazo.' }
+      Start-Sleep -Milliseconds 500
+    }
+  }
   Move-Item -LiteralPath $Target -Destination $backup -Force
   try {
     Move-Item -LiteralPath $temporary -Destination $Target -Force
@@ -51,8 +66,19 @@ if ($process -and -not $process.WaitForExit(300000)) { throw 'Primarix no se cer
     Move-Item -LiteralPath $backup -Destination $Target -Force
     throw
   }
-  Start-Process -FilePath $Target
+  if (-not $NoRestart) { Start-Process -FilePath $Target }
   Remove-Item -LiteralPath $backup -Force
+  Write-UpdateLog 'Actualización instalada y Primarix reiniciado.'
+} catch {
+  Write-UpdateLog "Error al actualizar: $($_.Exception.Message)"
+  if (Test-Path -LiteralPath $backup) {
+    Remove-Item -LiteralPath $Target -Force -ErrorAction SilentlyContinue
+    Move-Item -LiteralPath $backup -Destination $Target -Force
+  }
+  if (-not $NoRestart -and (Test-Path -LiteralPath $Target)) {
+    try { Start-Process -FilePath $Target } catch { Write-UpdateLog "No se pudo reabrir la versión anterior: $($_.Exception.Message)" }
+  }
+  exit 1
 } finally {
   Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
 }
@@ -111,6 +137,17 @@ async function download(update, file, progress) {
   });
 }
 
+function launchDetached(command, args, options) {
+  const child = spawn(command, args, options);
+  return new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('spawn', () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
 async function install(update, progress) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'antagon-update-'));
   const archive = path.join(dir, update.assetName);
@@ -123,7 +160,7 @@ async function install(update, progress) {
     if (!target || !fs.existsSync(target))
       throw Error('No se encontró el .exe portable que debe actualizarse. Abre Primarix desde su archivo original.');
     const portableSwap = path.join(dir, 'swap.ps1');
-    await fsp.writeFile(portableSwap, WINDOWS_PORTABLE_SWAP, 'utf8');
+    await fsp.writeFile(portableSwap, `\uFEFF${WINDOWS_PORTABLE_SWAP}`, 'utf8');
     const args = [
       '-NoProfile',
       '-WindowStyle',
@@ -139,11 +176,11 @@ async function install(update, progress) {
       '-Target',
       target,
     ];
-    spawn('powershell.exe', args, {
+    await launchDetached('powershell.exe', args, {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
-    }).unref();
+    });
   } else if (process.platform === 'win32') {
     await fsp.mkdir(unpacked);
     await extract(archive, unpacked);
@@ -151,12 +188,16 @@ async function install(update, progress) {
     if (!fresh) throw Error('Actualización inválida: no contiene Primarix Client.exe.');
     await fsp.writeFile(script, WINDOWS_SWAP.replaceAll('\n', '\r\n'));
     const args = [script, String(process.pid), path.dirname(fresh), path.dirname(process.execPath), process.execPath];
-    spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${args.map((a) => `"${a}"`).join(' ')}"`], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-      windowsVerbatimArguments: true,
-    }).unref();
+    await launchDetached(
+      process.env.ComSpec || 'cmd.exe',
+      ['/d', '/s', '/c', `"${args.map((a) => `"${a}"`).join(' ')}"`],
+      {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+        windowsVerbatimArguments: true,
+      },
+    );
   } else {
     await fsp.mkdir(unpacked);
     await runFile('/usr/bin/ditto', ['-x', '-k', archive, unpacked]);
@@ -187,6 +228,7 @@ module.exports = {
   newer,
   releaseAsset,
   findWindowsApp,
+  windowsPortableSwap: WINDOWS_PORTABLE_SWAP,
   repository: REPO,
   configured: !!REPO,
 };

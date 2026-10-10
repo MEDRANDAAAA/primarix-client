@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { execFileSync, spawn } = require('node:child_process');
 const updater = require('../electron/updater.cjs');
 
 const digest = 'sha256:' + 'a'.repeat(64);
@@ -59,4 +60,60 @@ test('legacy Windows ZIPs can contain either launcher executable name', (t) => {
 test('known public release repository is configured by default', () => {
   assert.equal(updater.configured, true);
   assert.equal(updater.repository, 'MEDRANDAAAA/primarix-client');
+});
+
+test('Windows portable swap waits for file access, replaces the executable and logs success', async (t) => {
+  if (process.platform !== 'win32') return t.skip('Windows portable updater integration test.');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'primarix-portable-update-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const script = path.join(root, 'swap.ps1');
+  const lockScript = path.join(root, 'hold-lock.ps1');
+  const source = path.join(root, 'new portable.exe');
+  const target = path.join(root, 'Primarix Client.exe');
+  fs.writeFileSync(script, `\uFEFF${updater.windowsPortableSwap}`, 'utf8');
+  fs.writeFileSync(
+    lockScript,
+    `\uFEFFparam([string]$Target)\n$file = [System.IO.File]::Open($Target, 'Open', 'ReadWrite', 'None')\nStart-Sleep -Seconds 2\n$file.Dispose()\n`,
+    'utf8',
+  );
+  fs.writeFileSync(source, 'updated executable');
+  fs.writeFileSync(target, 'old executable');
+  const locker = spawn(
+    'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', lockScript, '-Target', target],
+    { stdio: 'ignore', windowsHide: true },
+  );
+  await new Promise((resolve, reject) => {
+    locker.once('error', reject);
+    locker.once('spawn', resolve);
+  });
+  const started = Date.now();
+
+  execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      script,
+      '-ProcessId',
+      '2147483647',
+      '-Source',
+      source,
+      '-Target',
+      target,
+      '-NoRestart',
+    ],
+    { stdio: 'pipe', timeout: 30_000 },
+  );
+  await new Promise((resolve, reject) => {
+    locker.once('error', reject);
+    locker.once('exit', resolve);
+  });
+
+  assert.ok(Date.now() - started >= 1_000, 'the updater should wait while the portable executable is locked');
+  assert.equal(fs.readFileSync(target, 'utf8'), 'updated executable');
+  assert.match(fs.readFileSync(`${target}.update.log`, 'utf8'), /Actualización instalada/);
+  assert.equal(fs.existsSync(`${target}.update`), false);
 });
