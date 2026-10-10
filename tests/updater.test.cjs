@@ -62,7 +62,7 @@ test('known public release repository is configured by default', () => {
   assert.equal(updater.repository, 'MEDRANDAAAA/primarix-client');
 });
 
-test('Windows portable swap waits for file access, replaces the executable and logs success', async (t) => {
+test('Windows portable swap waits for the portable host and file access before replacing the executable', async (t) => {
   if (process.platform !== 'win32') return t.skip('Windows portable updater integration test.');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'primarix-portable-update-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -70,6 +70,7 @@ test('Windows portable swap waits for file access, replaces the executable and l
   const lockScript = path.join(root, 'hold-lock.ps1');
   const source = path.join(root, 'new portable.exe');
   const target = path.join(root, 'Primarix Client.exe');
+  const logDirectory = path.join(root, 'Primarix Client', 'logs');
   fs.writeFileSync(script, `\uFEFF${updater.windowsPortableSwap}`, 'utf8');
   fs.writeFileSync(
     lockScript,
@@ -99,13 +100,17 @@ test('Windows portable swap waits for file access, replaces the executable and l
       script,
       '-ProcessId',
       '2147483647',
+      '-ParentProcessId',
+      String(locker.pid),
       '-Source',
       source,
       '-Target',
       target,
+      '-Version',
+      '',
       '-NoRestart',
     ],
-    { stdio: 'pipe', timeout: 30_000 },
+    { stdio: 'pipe', timeout: 30_000, env: { ...process.env, APPDATA: root } },
   );
   await new Promise((resolve, reject) => {
     locker.once('error', reject);
@@ -114,6 +119,6 @@ test('Windows portable swap waits for file access, replaces the executable and l
 
   assert.ok(Date.now() - started >= 1_000, 'the updater should wait while the portable executable is locked');
   assert.equal(fs.readFileSync(target, 'utf8'), 'updated executable');
-  assert.match(fs.readFileSync(`${target}.update.log`, 'utf8'), /Actualización instalada/);
+  assert.match(fs.readFileSync(path.join(logDirectory, 'updater.log'), 'utf8'), /Actualización instalada/);
   assert.equal(fs.existsSync(`${target}.update`), false);
 });

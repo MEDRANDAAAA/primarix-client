@@ -36,17 +36,27 @@ if errorlevel 8 exit /b 1
 start "" "%EXECUTABLE%"
 `;
 
-const WINDOWS_PORTABLE_SWAP = `param([int]$ProcessId, [string]$Source, [string]$Target, [switch]$NoRestart)
+const WINDOWS_PORTABLE_SWAP = `param([int]$ProcessId, [int]$ParentProcessId, [string]$Source, [string]$Target, [string]$Version, [switch]$NoRestart)
 $ErrorActionPreference = 'Stop'
 $temporary = "$Target.update"
 $backup = "$Target.previous.$([guid]::NewGuid().ToString('N'))"
-$logFile = "$Target.update.log"
+$logDirectory = Join-Path $env:APPDATA 'Primarix Client\\logs'
+New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+$logFile = Join-Path $logDirectory 'updater.log'
 function Write-UpdateLog([string]$Message) {
-  Add-Content -LiteralPath $logFile -Value "$(Get-Date -Format o) $Message" -Encoding UTF8
+  $entry = "$(Get-Date -Format o) $Message"
+  Add-Content -LiteralPath $logFile -Value $entry -Encoding UTF8
 }
 try {
-  $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
-  if ($process -and -not $process.WaitForExit(300000)) { throw 'Primarix no se cerró a tiempo.' }
+  Write-UpdateLog "Actualizador iniciado para $Target; versión esperada $Version."
+  foreach ($id in @($ProcessId, $ParentProcessId) | Select-Object -Unique) {
+    if ($id -le 0 -or $id -eq $PID) { continue }
+    $process = Get-Process -Id $id -ErrorAction SilentlyContinue
+    if ($process -and -not $process.WaitForExit(300000)) {
+      throw "El proceso de Primarix $id no se cerró a tiempo."
+    }
+  }
+  Write-UpdateLog 'Primarix cerrado; preparando el reemplazo.'
   Copy-Item -LiteralPath $Source -Destination $temporary -Force
   $deadline = [DateTime]::UtcNow.AddMinutes(2)
   while ($true) {
@@ -66,9 +76,13 @@ try {
     Move-Item -LiteralPath $backup -Destination $Target -Force
     throw
   }
+  $installedVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($Target).ProductVersion
+  if ($Version -and $installedVersion -notmatch "(^|\\.)$([regex]::Escape($Version))($|\\.)") {
+    throw "La versión instalada no coincide: se esperaba $Version y se encontró $installedVersion."
+  }
   if (-not $NoRestart) { Start-Process -FilePath $Target }
   Remove-Item -LiteralPath $backup -Force
-  Write-UpdateLog 'Actualización instalada y Primarix reiniciado.'
+  Write-UpdateLog "Actualización instalada y Primarix reiniciado. Versión: $Version."
 } catch {
   Write-UpdateLog "Error al actualizar: $($_.Exception.Message)"
   if (Test-Path -LiteralPath $backup) {
@@ -171,10 +185,14 @@ async function install(update, progress) {
       portableSwap,
       '-ProcessId',
       String(process.pid),
+      '-ParentProcessId',
+      String(process.ppid),
       '-Source',
       archive,
       '-Target',
       target,
+      '-Version',
+      update.version,
     ];
     await launchDetached('powershell.exe', args, {
       detached: true,
