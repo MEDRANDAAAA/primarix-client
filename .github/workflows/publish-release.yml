@@ -51,6 +51,15 @@ jobs:
         with:
           gradle-version: 2.14.1
 
+      - name: Select Gradle 2.14.1 for ForgeGradle
+        shell: pwsh
+        run: |
+          $gradleHome = Join-Path $env:RUNNER_TEMP '.gradle-actions\gradle-installations\installs\gradle-2.14.1'
+          if (!(Test-Path (Join-Path $gradleHome 'bin\gradle.bat'))) {
+            throw "Gradle 2.14.1 was not provisioned at $gradleHome."
+          }
+          "GRADLE_HOME=$gradleHome" >> $env:GITHUB_ENV
+
       - name: Check release tag matches package version
         id: version
         shell: pwsh
