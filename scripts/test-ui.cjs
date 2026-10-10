@@ -213,19 +213,31 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.click('[data-view="play"]');
     assert.equal(
       await page
-        .locator('button:not(.tab):not(.account)')
-        .evaluateAll((buttons) => buttons.every((button) => getComputedStyle(button).color === 'rgb(0, 0, 0)')),
-      true,
+        .locator('#launch')
+        .evaluate((button) => getComputedStyle(button).getPropertyValue('--accent-foreground').trim()),
+      '#24141b',
     );
+    await page.evaluate(() => {
+      const input = document.querySelector('#accent-color');
+      input.value = '#102030';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    assert.equal(
+      await page.locator('#launch').evaluate((button) => getComputedStyle(button).color),
+      'rgb(255, 248, 242)',
+    );
+    await page.evaluate(() => {
+      const input = document.querySelector('#accent-color');
+      input.value = '#3182ce';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     await page.waitForFunction(
       () =>
         document.querySelector('#view-play').classList.contains('active') &&
         getComputedStyle(document.querySelector('#launch')).backgroundColor === 'rgb(49, 130, 206)',
     );
-    assert.equal(
-      await page.locator('#launch').evaluate((button) => getComputedStyle(button).backgroundColor),
-      'rgb(49, 130, 206)',
-    );
+    assert.equal(await page.locator('#launch').evaluate((button) => getComputedStyle(button).color), 'rgb(36, 20, 27)');
+    assert.notEqual(await page.locator('#launch').evaluate((button) => getComputedStyle(button).boxShadow), 'none');
     await page.locator('#launch').hover();
     assert.notEqual(
       await page.locator('#launch').evaluate((button) => getComputedStyle(button).backgroundColor),
@@ -243,10 +255,12 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     );
     await page.waitForSelector('#mods-list [data-mod-toggle="ExampleMod.jar"]');
     const secondaryButton = page.locator('#mods-list [data-mod-toggle="ExampleMod.jar"]');
-    assert.equal(
+    assert.notEqual(
       await secondaryButton.evaluate((button) => getComputedStyle(button).backgroundColor),
       'rgb(49, 130, 206)',
     );
+    assert.equal(await secondaryButton.evaluate((button) => getComputedStyle(button).color), 'rgb(255, 245, 232)');
+    assert.notEqual(await secondaryButton.evaluate((button) => getComputedStyle(button).boxShadow), 'none');
     await secondaryButton.hover();
     assert.notEqual(
       await secondaryButton.evaluate((button) => getComputedStyle(button).backgroundColor),

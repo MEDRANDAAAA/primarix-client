@@ -11,6 +11,7 @@
   --text: #fff5e8;
   --muted: #c0aebd;
   --accent: #f49caf;
+  --accent-foreground: #24141b;
   --red: var(--accent);
   --red-hover: color-mix(in srgb, var(--accent), white 18%);
   --ui: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
@@ -142,13 +143,20 @@ nav {
   align-items: center;
   gap: 7px;
   padding: 6px 10px 6px 6px;
-  border-radius: 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
   text-align: left;
   min-width: 0;
   flex: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 .account:hover {
   background: var(--raised);
+  border-color: var(--line);
+  box-shadow: 0 2px 0 rgb(0 0 0 / 48%);
 }
 .avatar {
   width: 30px;
@@ -781,10 +789,13 @@ main {
   white-space: nowrap;
 }
 .danger {
-  padding: 8px 13px;
+  height: 32px;
+  padding: 0 12px;
   background: #8e171a;
-  border-radius: 4px;
+  border-color: #c54449;
+  border-radius: 6px;
   color: white;
+  box-shadow: 0 2px 0 rgb(0 0 0 / 72%);
 }
 .danger:hover {
   background: #bc1b20;
@@ -866,10 +877,12 @@ main {
   font: 20px var(--pixel);
   letter-spacing: 0.08em;
   background: var(--accent);
-  padding: 0 56px;
-  height: 56px;
+  color: var(--accent-foreground);
+  padding: 0 38px;
+  height: 48px;
   border-radius: 7px;
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--red), transparent 72%);
+  border-color: color-mix(in srgb, var(--accent-foreground), var(--accent) 72%);
+  box-shadow: 0 3px 0 rgb(0 0 0 / 72%);
   text-transform: uppercase;
   transition:
     background 0.15s,
@@ -878,8 +891,12 @@ main {
 }
 .play:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent), white 18%);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--red), transparent 58%);
+  transform: translate(-1px, -1px);
+  box-shadow: 0 5px 0 rgb(0 0 0 / 72%);
+}
+.play:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 rgb(0 0 0 / 72%);
 }
 .hint {
   position: absolute;
@@ -1007,9 +1024,9 @@ input[type='color'] {
 
 .primary,
 .secondary {
-  height: 34px;
-  padding: 0 16px;
-  border-radius: 4px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
   font-weight: 600;
   font-family: var(--pixel);
   font-size: 12px;
@@ -1018,20 +1035,24 @@ input[type='color'] {
   transition:
     background 0.15s,
     border-color 0.15s,
-    transform 0.15s;
+    transform 0.12s,
+    box-shadow 0.12s;
 }
 .primary {
   background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: color-mix(in srgb, var(--accent-foreground), var(--accent) 72%);
 }
 .primary:hover {
   background: color-mix(in srgb, var(--accent), white 18%);
 }
 .secondary {
   background: var(--raised);
-  border: 1px solid var(--line);
+  border-color: var(--line);
 }
 .secondary:hover {
-  border-color: #444;
+  background: color-mix(in srgb, var(--raised), var(--accent) 12%);
+  border-color: color-mix(in srgb, var(--accent), var(--line) 45%);
 }
 
 dialog {
@@ -1184,9 +1205,13 @@ dialog h2 {
   color: #88c98b;
 }
 .close {
+  width: 30px;
+  height: 30px;
+  padding: 0;
   font-size: 22px;
   color: var(--muted);
   line-height: 1;
+  border-radius: 6px;
 }
 .close:hover {
   color: var(--text);
@@ -1194,20 +1219,34 @@ dialog h2 {
 .segmented {
   display: flex;
   background: var(--bg);
-  border-radius: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
   padding: 3px;
   margin-bottom: 16px;
 }
 .segmented button {
   flex: 1;
-  height: 30px;
-  border-radius: 3px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  box-shadow: none;
   color: var(--muted);
   font-weight: 600;
 }
+.segmented button:hover:not(:disabled) {
+  transform: none;
+  background: color-mix(in srgb, var(--raised), var(--accent) 10%);
+  box-shadow: none;
+}
 .segmented .active {
-  background: var(--raised);
-  color: var(--text);
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--accent-foreground), var(--accent) 72%);
+  color: var(--accent-foreground);
+  box-shadow: 0 2px 0 rgb(0 0 0 / 55%);
+}
+.segmented .active:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent), white 14%);
+  box-shadow: 0 3px 0 rgb(0 0 0 / 62%);
 }
 #offline-form,
 #microsoft-form {
@@ -1259,15 +1298,21 @@ dialog input:focus {
   display: flex;
   align-items: center;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--line) 55%);
+  border-radius: 6px;
   background: var(--bg);
+  box-shadow: 0 2px 0 rgb(0 0 0 / 58%);
 }
 .quick-nickname button {
   padding: 6px 9px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
 }
 .quick-nickname button:hover {
-  background: var(--raised);
+  background: color-mix(in srgb, var(--raised), var(--accent) 12%);
+  box-shadow: none;
 }
 .quick-nickname .quick-nickname-remove {
   padding: 5px 7px;
@@ -1811,21 +1856,136 @@ pre {
 #call-panel button {
   white-space: nowrap;
 }
-button:not(.tab):not(.account):not(.play):not(.primary) {
-  border-color: color-mix(in srgb, var(--accent), white 35%);
-  background: var(--accent);
-  box-shadow:
-    inset 0 1px rgb(228 255 255 / 16%),
-    0 4px 14px color-mix(in srgb, var(--accent), transparent 68%);
-  backdrop-filter: blur(7px);
-}
-button:not(.tab):not(.account):not(.play):not(.primary):hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent), white 18%);
-  background: color-mix(in srgb, var(--accent), white 18%);
-  box-shadow:
-    inset 0 1px rgb(240 255 255 / 24%),
-    0 0 12px color-mix(in srgb, var(--accent), transparent 58%);
-}
 button:not(.tab):not(.account) {
-  color: #000;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: 0 2px 0 rgb(0 0 0 / 62%);
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    box-shadow 0.12s,
+    transform 0.12s;
+}
+button:not(.tab):not(.account):hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent), var(--line) 35%);
+  transform: translate(-1px, -1px);
+  box-shadow: 0 4px 0 rgb(0 0 0 / 68%);
+}
+button:not(.tab):not(.account):active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 rgb(0 0 0 / 62%);
+}
+.primary:hover:not(:disabled),
+.update:hover:not(:disabled),
+.play:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent), white 16%);
+}
+.primary:active:not(:disabled),
+.secondary:active:not(:disabled),
+.danger:active:not(:disabled),
+.update:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 rgb(0 0 0 / 62%);
+}
+.primary:disabled,
+.secondary:disabled,
+.danger:disabled,
+.play:disabled {
+  box-shadow: 0 1px 0 rgb(0 0 0 / 42%);
+}
+.tab {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.tab:hover {
+  transform: none;
+  box-shadow: none;
+}
+.account {
+  color: var(--text);
+}
+.account:hover {
+  transform: none;
+}
+.quick-nickname button:hover,
+.segmented button:hover:not(:disabled) {
+  transform: none;
+}
+.resourcepacks-drop {
+  border-style: dashed !important;
+  box-shadow: 0 3px 0 rgb(0 0 0 / 62%) !important;
+}
+.resourcepacks-drop:hover:not(:disabled),
+.resourcepacks-drop.dragging {
+  transform: translate(-1px, -1px);
+  box-shadow: 0 5px 0 rgb(0 0 0 / 68%) !important;
+}
+button:not(.tab):not(.account).primary,
+button:not(.tab):not(.account).play,
+button:not(.tab):not(.account).update,
+.segmented button.active:not(:disabled) {
+  color: var(--accent-foreground);
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--accent-foreground), var(--accent) 72%);
+}
+button:not(.tab):not(.account).secondary {
+  background: var(--raised);
+  border-color: var(--line);
+}
+.segmented button:not(.active),
+.segmented button:not(.active):hover:not(:disabled) {
+  color: var(--muted);
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+.segmented button.active:hover:not(:disabled) {
+  color: var(--accent-foreground);
+  background: color-mix(in srgb, var(--accent), white 14%);
+  box-shadow: 0 3px 0 rgb(0 0 0 / 62%);
+}
+button:not(.tab):not(.account).danger {
+  color: #fff;
+  background: #8e171a;
+  border-color: #c54449;
+}
+button:not(.tab):not(.account).danger:hover:not(:disabled) {
+  background: #bc1b20;
+}
+button:not(.tab):not(.account).close {
+  color: var(--muted);
+}
+.quick-nickname button:not(.tab):not(.account) {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+}
+.quick-nickname button.quick-nickname-remove {
+  color: var(--muted);
+}
+button:not(.tab):not(.account).resourcepacks-drop {
+  border-style: dashed;
+  background: var(--surface);
+}
+button:not(.tab):not(.account).primary:hover:not(:disabled),
+button:not(.tab):not(.account).play:hover:not(:disabled),
+button:not(.tab):not(.account).update:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent), white 16%);
+}
+.quick-nickname button:not(.tab):not(.account) {
+  background: transparent;
+}
+.quick-nickname button:not(.tab):not(.account):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--raised), var(--accent) 12%);
+}
+button:not(.tab):not(.account).resourcepacks-drop:hover:not(:disabled),
+button:not(.tab):not(.account).resourcepacks-drop.dragging {
+  background: color-mix(in srgb, var(--surface), var(--accent) 8%);
 }

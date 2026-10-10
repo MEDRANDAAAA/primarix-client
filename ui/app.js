@@ -641,7 +641,22 @@ $('#launch').onclick = async () => {
 $('#memory').oninput = (e) => ($('#memory-value').textContent = e.target.value + ' GB');
 setting('#memory', 'memory', (input) => Number(input.value));
 function renderAccent(color) {
+  const match = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!match) throw Error('El color de acento no es válido.');
+  const channels = [0, 2, 4].map((offset) => Number.parseInt(match[1].slice(offset, offset + 2), 16) / 255);
+  const luminance = channels.reduce(
+    (sum, channel, index) =>
+      sum +
+      [0.2126, 0.7152, 0.0722][index] * (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4),
+    0,
+  );
+  const lightContrast = 1.05 / (luminance + 0.05);
+  const darkContrast = (luminance + 0.05) / 0.05;
   document.documentElement.style.setProperty('--accent', color);
+  document.documentElement.style.setProperty(
+    '--accent-foreground',
+    darkContrast >= lightContrast ? '#24141b' : '#fff8f2',
+  );
   $('#accent-color').value = color;
 }
 setting('#accent-color', 'accentColor', (input) => input.value);
