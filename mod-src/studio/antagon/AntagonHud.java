@@ -3719,6 +3719,9 @@ public class AntagonHud {
                         && (sprintToggled || menu != null && menu.editing))
                     panel("togglesprint", "SPRINT (TOGGLED)", 12, 204, sw, sh);
                 if (enabled("clock")) panel("clock", clockText(), 210, 12, sw, sh);
+                if (enabled("damageindicator")
+                        && field(mc, "field_71462_r", "currentScreen") == null)
+                    damageIndicatorHud(player, sw, sh);
             } finally {
                 end();
             }
@@ -5598,8 +5601,7 @@ public class AntagonHud {
                         base + line * ((own ? 1 : 0) + (tag != null ? 1 : 0)) + 0.3,
                         z,
                         view,
-                        distance,
-                        self);
+                        distance);
             if (!own && tag == null) return;
         } catch (Exception e) {
             report(e);
@@ -5616,10 +5618,8 @@ public class AntagonHud {
             double y,
             double z,
             int view,
-            double distance,
-            boolean self)
+            double distance)
             throws Exception {
-        if (self) return;
         int range = 32;
         try {
             range = Integer.parseInt(opt("damageindicator", "range"));
@@ -5664,10 +5664,8 @@ public class AntagonHud {
             throws Exception {
         Object renderManager = call(mc, new String[] {"func_175598_ae", "getRenderManager"});
         float size = percent("damageindicator", "size");
-        int healthCount = Math.max(1, Math.min(20, (int) Math.ceil(maximum / 2f)));
-        int absorptionCount = Math.max(0, Math.min(20, (int) Math.ceil(absorption / 2f)));
-        int count = healthCount + absorptionCount;
-        float unit = 0.72f, step = 6.5f, width = (count - 1) * step + HEART_MASK[0].length() * unit;
+        int count = heartCount(maximum, absorption);
+        float unit = 0.72f, step = 6.5f, width = heartWidth(count, unit, step);
         GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
         GL11.glPushMatrix();
         try {
@@ -5681,35 +5679,87 @@ public class AntagonHud {
             GL11.glEnable(GL11.GL_BLEND);
             GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
             GL11.glDisable(GL11.GL_TEXTURE_2D);
-            if (flag("damageindicator", "bg")) rect(-width / 2 - 3, -2, width + 6, 8, 0x99000000);
-            float left = -width / 2;
-            for (int heart = 0; heart < count; heart++) {
-                boolean gold = heart >= healthCount;
-                int heartIndex = gold ? heart - healthCount : heart;
-                float points = (gold ? absorption : health) - heartIndex * 2f;
-                int full = gold ? 0xFFFFD34A : 0xFFFF343F;
-                int empty = gold ? 0xFF604E20 : 0xFF54252A;
-                for (int row = 0; row < HEART_MASK.length; row++) {
-                    for (int column = 0; column < HEART_MASK[row].length(); column++) {
-                        if (HEART_MASK[row].charAt(column) != '1') continue;
-                        int color =
-                                points >= 2
-                                        ? full
-                                        : points > 0 && column < HEART_MASK[row].length() / 2
-                                                ? full
-                                                : empty;
-                        rect(
-                                left + heart * step + column * unit,
-                                row * unit,
-                                unit,
-                                unit,
-                                color);
-                    }
-                }
-            }
+            drawHealthHearts(-width / 2, 0, health, maximum, absorption, unit, step);
         } finally {
             GL11.glPopMatrix();
             GL11.glPopAttrib();
+        }
+    }
+
+    private void damageIndicatorHud(Object player, float width, float height) throws Exception {
+        Object settings = field(mc, "field_71474_y", "gameSettings");
+        if (((Number) field(settings, "field_74320_O", "thirdPersonView")).intValue() != 0) return;
+        float health = entityHealth(player);
+        float maximum =
+                ((Number) call(player, new String[] {"func_110138_aP", "getMaxHealth"})).floatValue();
+        float absorption =
+                flag("damageindicator", "absorption")
+                        ? ((Number) call(player, new String[] {"func_110139_bj", "getAbsorptionAmount"}))
+                                .floatValue()
+                        : 0;
+        String display = opt("damageindicator", "display");
+        if (!display.equals("corazones")) {
+            String label =
+                    "\u2764 "
+                            + DamageIndicatorDisplay.label(display, health, maximum);
+            text(label, (width - stringWidth(font, label)) / 2, height - 62, WHITE);
+            return;
+        }
+        float scale = 1.75f * percent("damageindicator", "size");
+        float unit = 0.72f * scale, step = 6.5f * scale;
+        int count = heartCount(maximum, absorption);
+        float rowWidth = heartWidth(count, unit, step);
+        drawHealthHearts(
+                (width - rowWidth) / 2,
+                height - 66,
+                health,
+                maximum,
+                absorption,
+                unit,
+                step);
+    }
+
+    private static int heartCount(float maximum, float absorption) {
+        int healthCount = Math.max(1, Math.min(20, (int) Math.ceil(maximum / 2f)));
+        int absorptionCount = Math.max(0, Math.min(20, (int) Math.ceil(absorption / 2f)));
+        return healthCount + absorptionCount;
+    }
+
+    private static float heartWidth(int count, float unit, float step) {
+        return (count - 1) * step + HEART_MASK[0].length() * unit;
+    }
+
+    private void drawHealthHearts(
+            float left,
+            float top,
+            float health,
+            float maximum,
+            float absorption,
+            float unit,
+            float step) {
+        int healthCount = Math.max(1, Math.min(20, (int) Math.ceil(maximum / 2f)));
+        int count = heartCount(maximum, absorption);
+        float width = heartWidth(count, unit, step);
+        if (flag("damageindicator", "bg"))
+            rect(left - 3, top - 2, width + 6, HEART_MASK.length * unit + 4, 0x99000000);
+        for (int heart = 0; heart < count; heart++) {
+            boolean gold = heart >= healthCount;
+            int heartIndex = gold ? heart - healthCount : heart;
+            float points = (gold ? absorption : health) - heartIndex * 2f;
+            int full = gold ? 0xFFFFD34A : 0xFFFF343F;
+            int empty = gold ? 0xFF604E20 : 0xFF54252A;
+            for (int row = 0; row < HEART_MASK.length; row++) {
+                for (int column = 0; column < HEART_MASK[row].length(); column++) {
+                    if (HEART_MASK[row].charAt(column) != '1') continue;
+                    int color =
+                            points >= 2
+                                    ? full
+                                    : points > 0 && column < HEART_MASK[row].length() / 2
+                                            ? full
+                                            : empty;
+                    rect(left + heart * step + column * unit, top + row * unit, unit, unit, color);
+                }
+            }
         }
     }
 

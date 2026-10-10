@@ -82,7 +82,7 @@ final class ModuleRegistry {
         "Tamaño, fondo y números", "Elimina el bloqueo de clic", "Brillo máximo",
         "Tu nombre en tercera persona", "Objetos animados en el suelo",
         "Efectos activos y tiempo restante",
-        "Corazones normales y de absorción sobre jugadores"
+        "Corazones de otros jugadores y tu vida en primera persona"
     };
     private static final int[] CATEGORY = {
         1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 1, 2, 3, 3, 3, 1, 2
