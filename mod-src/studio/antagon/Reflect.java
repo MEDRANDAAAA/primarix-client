@@ -150,7 +150,12 @@ final class Reflect {
     }
 
     static double lerp(Object entity, String last, String now, float partialTick) throws Exception {
+        return interpolate(entity, last, now, partialTick) - d(entity, now);
+    }
+
+    static double interpolate(Object entity, String last, String now, float partialTick)
+            throws Exception {
         double previous = d(entity, last), current = d(entity, now);
-        return previous + (current - previous) * partialTick - current;
+        return previous + (current - previous) * partialTick;
     }
 }

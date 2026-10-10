@@ -6,6 +6,9 @@ public final class CoreTest {
     }
 
     private static final class Target extends Parent {
+        private double lastX = 10;
+        private double x = 14;
+
         private String overloaded(String value) {
             return "string:" + value;
         }
@@ -57,6 +60,8 @@ public final class CoreTest {
         check(Reflect.getF(target, "amount") == 3f);
         Reflect.setF(target, "amount", 7f);
         check(Reflect.getF(target, "amount") == 7f);
+        check(Reflect.interpolate(target, "lastX", "x", 0.25f) == 11d);
+        check(Reflect.lerp(target, "lastX", "x", 0.25f) == -3d);
         check(
                 "b50ad385829d3141a2167e7d7539ba7f".equals(LocalIdentity.offlineUuid("Notch")));
         check(
@@ -84,6 +89,8 @@ public final class CoreTest {
         check(
                 DamageIndicatorDisplay.heartBillboardScale(2f)
                         == 2 * DamageIndicatorDisplay.heartBillboardScale(1f));
+        check(DamageIndicatorDisplay.heartAnchorY(1.8f) == 1.98f);
+        check(DamageIndicatorDisplay.heartAnchorY(1.8f) < 1.8f + 0.5f);
         check("off".equals(ModuleRegistry.defaultValue("chat.transparent")));
         check(MenuLayout.homeScale(854, 480) == 1f);
         check(MenuLayout.homeScale(1360, 719) == 1f);

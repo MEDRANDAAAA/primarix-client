@@ -5601,15 +5601,68 @@ public class AntagonHud {
                         view);
             }
             if (tag != null) billboard(x, base + line, z, tag, view);
-            if (enabled("damageindicator"))
+        } catch (Exception e) {
+            report(e);
+        }
+    }
+
+    @SubscribeEvent
+    public void damageIndicators(RenderWorldLastEvent event) {
+        if (!enabled("damageindicator")) return;
+        try {
+            Object world = field(mc, "field_71441_e", "theWorld"),
+                    self = field(mc, "field_71439_g", "thePlayer");
+            if (world == null || self == null) return;
+
+            int view =
+                    ((Number)
+                                    field(
+                                            field(mc, "field_71474_y", "gameSettings"),
+                                            "field_74320_O",
+                                            "thirdPersonView"))
+                            .intValue();
+            if (view < 0 || view > 2) return;
+
+            Object renderManager = call(mc, new String[] {"func_175598_ae", "getRenderManager"});
+            double renderX =
+                            ((Number) field(renderManager, "field_78725_b", "renderPosX"))
+                                    .doubleValue(),
+                    renderY =
+                            ((Number) field(renderManager, "field_78726_c", "renderPosY"))
+                                    .doubleValue(),
+                    renderZ =
+                            ((Number) field(renderManager, "field_78723_d", "renderPosZ"))
+                                    .doubleValue();
+            Class<?> playerClass = Class.forName("net.minecraft.entity.player.EntityPlayer");
+            float partialTicks = event.partialTicks;
+
+            for (Object player :
+                    new ArrayList<Object>(
+                            (List<?>) field(world, "field_72996_f", "loadedEntityList"))) {
+                if (!playerClass.isInstance(player)
+                        || (player == self && view == 0)
+                        || (Boolean) call(player, new String[] {"func_82150_aj", "isInvisible"}))
+                    continue;
+
+                double x =
+                                interpolate(player, "field_70142_S", "field_70165_t", partialTicks)
+                                        - renderX,
+                        y =
+                                interpolate(player, "field_70137_T", "field_70163_u", partialTicks)
+                                        - renderY,
+                        z =
+                                interpolate(player, "field_70136_U", "field_70161_v", partialTicks)
+                                        - renderZ,
+                        distance = x * x + y * y + z * z;
+                float height = ((Number) field(player, "field_70131_O", "height")).floatValue();
                 damageIndicator(
                         player,
                         x,
-                        base + line * ((own ? 1 : 0) + (tag != null ? 1 : 0)) + 0.3,
+                        y + DamageIndicatorDisplay.heartAnchorY(height),
                         z,
                         view,
                         distance);
-            if (!own && tag == null) return;
+            }
         } catch (Exception e) {
             report(e);
         }
@@ -5686,6 +5739,8 @@ public class AntagonHud {
             GL11.glEnable(GL11.GL_BLEND);
             GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
             GL11.glDisable(GL11.GL_TEXTURE_2D);
+            GL11.glDisable(GL11.GL_CULL_FACE);
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
             GL11.glDepthMask(false);
             drawHealthHearts(-width / 2, 0, health, maximum, absorption, unit, step);
         } finally {

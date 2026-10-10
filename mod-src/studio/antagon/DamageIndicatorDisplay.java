@@ -9,6 +9,10 @@ final class DamageIndicatorDisplay {
         return HEART_BILLBOARD_SCALE * size;
     }
 
+    static float heartAnchorY(float entityHeight) {
+        return entityHeight + 0.18f;
+    }
+
     static String label(String display, float health, float maximum) {
         if (display.equals("vida")) return hearts(health) + "/" + hearts(maximum);
         if (display.equals("porcentaje")) {
