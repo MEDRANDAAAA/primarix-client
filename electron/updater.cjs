@@ -98,15 +98,23 @@ try {
 }
 `;
 
-const WINDOWS_INSTALLER_SWAP = `param([int]$ProcessId, [string]$Installer, [string]$InstallerArguments = '/S', [string]$Target, [string]$Version, [switch]$NoRestart)
+const WINDOWS_INSTALLER_SWAP = `param([int]$ProcessId, [string]$Installer, [string]$InstallerArguments = '/S', [string]$Target, [string]$Version, [string]$ReadyFile, [string]$LogFile, [switch]$NoRestart)
 $ErrorActionPreference = 'Stop'
-$logDirectory = Join-Path $env:APPDATA 'Primarix Client\\logs'
-New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
-$logFile = Join-Path $logDirectory 'updater.log'
+$profileLogFile = $null
 function Write-UpdateLog([string]$Message) {
-  Add-Content -LiteralPath $logFile -Value "$(Get-Date -Format o) $Message" -Encoding UTF8
+  $entry = "$(Get-Date -Format o) $Message"
+  Add-Content -LiteralPath $LogFile -Value $entry -Encoding UTF8
+  if ($profileLogFile) {
+    try { Add-Content -LiteralPath $profileLogFile -Value $entry -Encoding UTF8 }
+    catch { Add-Content -LiteralPath $LogFile -Value "$(Get-Date -Format o) No se pudo copiar el registro al perfil: $($_.Exception.Message)" -Encoding UTF8 }
+  }
 }
 try {
+  Write-UpdateLog 'El proceso auxiliar de actualización inició correctamente.'
+  if ($ReadyFile) { [System.IO.File]::WriteAllText($ReadyFile, 'ready') }
+  $logDirectory = Join-Path $env:APPDATA 'Primarix Client\\logs'
+  New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+  $profileLogFile = Join-Path $logDirectory 'updater.log'
   Write-UpdateLog "Actualizador NSIS iniciado para $Target; versión esperada $Version."
   if ($ProcessId -gt 0 -and $ProcessId -ne $PID) {
     $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
@@ -212,6 +220,35 @@ function launchDetached(command, args, options) {
   });
 }
 
+async function launchDetachedAndWait(command, args, options, readyFile, logFile) {
+  const child = spawn(command, args, options);
+  let spawnError = null;
+  let exitCode = null;
+  child.once('error', (error) => {
+    spawnError = error;
+  });
+  child.once('exit', (code) => {
+    exitCode = code;
+  });
+
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    try {
+      await fsp.access(readyFile);
+      child.unref();
+      return;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    if (spawnError) throw Error(`No se pudo iniciar el actualizador de Windows: ${spawnError.message}`);
+    if (exitCode !== null) {
+      throw Error(`El actualizador de Windows se cerró antes de iniciar (código ${exitCode}). Registro: ${logFile}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw Error(`El actualizador de Windows no confirmó el inicio. Registro: ${logFile}`);
+}
+
 async function install(update, progress) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'antagon-update-'));
   const archive = path.join(dir, update.assetName);
@@ -252,6 +289,8 @@ async function install(update, progress) {
   } else if (process.platform === 'win32' && update.format === 'nsis-installer') {
     const installerSwap = path.join(dir, 'install-update.ps1');
     await fsp.writeFile(installerSwap, `\uFEFF${WINDOWS_INSTALLER_SWAP}`, 'utf8');
+    const readyFile = path.join(dir, 'updater-ready');
+    const logFile = path.join(dir, 'updater.log');
     const args = [
       '-NoProfile',
       '-WindowStyle',
@@ -270,12 +309,22 @@ async function install(update, progress) {
       process.execPath,
       '-Version',
       update.version,
+      '-ReadyFile',
+      readyFile,
+      '-LogFile',
+      logFile,
     ];
-    await launchDetached('powershell.exe', args, {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-    });
+    await launchDetachedAndWait(
+      'powershell.exe',
+      args,
+      {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+      readyFile,
+      logFile,
+    );
   } else if (process.platform === 'win32') {
     await fsp.mkdir(unpacked);
     await extract(archive, unpacked);

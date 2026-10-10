@@ -53,12 +53,14 @@ test('Windows installations select the unversioned NSIS installer instead of the
 
 test('NSIS updater waits for the running launcher and verifies the installed version before restart', () => {
   assert.match(updater.windowsInstallerSwap, /WaitForExit\(300000\)/);
+  assert.match(updater.windowsInstallerSwap, /El proceso auxiliar de actualización inició correctamente/);
   assert.match(
     updater.windowsInstallerSwap,
     /Start-Process -FilePath \$Installer -ArgumentList \$InstallerArguments -Wait/,
   );
   assert.match(updater.windowsInstallerSwap, /La versión instalada no coincide/);
   assert.match(updater.windowsInstallerSwap, /Start-Process -FilePath \$Target/);
+  assert.match(updater.windowsInstallerSwap, /\[System\.IO\.File\]::WriteAllText\(\$ReadyFile, 'ready'\)/);
 });
 
 test('Windows NSIS updater waits for its installer and reports success', (t) => {
@@ -67,6 +69,8 @@ test('Windows NSIS updater waits for its installer and reports success', (t) => 
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const script = path.join(root, 'install-update.ps1');
   const marker = path.join(root, 'installer-ran.txt');
+  const readyFile = path.join(root, 'updater-ready');
+  const logFile = path.join(root, 'updater.log');
   const logDirectory = path.join(root, 'Primarix Client', 'logs');
   fs.writeFileSync(script, `\uFEFF${updater.windowsInstallerSwap}`, 'utf8');
 
@@ -88,6 +92,10 @@ test('Windows NSIS updater waits for its installer and reports success', (t) => 
       process.execPath,
       '-Version',
       '',
+      '-ReadyFile',
+      readyFile,
+      '-LogFile',
+      logFile,
       '-NoRestart',
     ],
     {
@@ -98,6 +106,8 @@ test('Windows NSIS updater waits for its installer and reports success', (t) => 
   );
 
   assert.match(fs.readFileSync(marker, 'utf8'), /installed/);
+  assert.equal(fs.readFileSync(readyFile, 'utf8'), 'ready');
+  assert.match(fs.readFileSync(logFile, 'utf8'), /El proceso auxiliar de actualización inició correctamente/);
   assert.match(fs.readFileSync(path.join(logDirectory, 'updater.log'), 'utf8'), /Actualización instalada/);
 });
 
