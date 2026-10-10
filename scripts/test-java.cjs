@@ -20,6 +20,7 @@ execFileSync(
     path.join(root, 'mod-src/studio/antagon/LocalIdentity.java'),
     path.join(root, 'mod-src/studio/antagon/ModuleRegistry.java'),
     path.join(root, 'mod-src/studio/antagon/DamageIndicatorDisplay.java'),
+    path.join(root, 'mod-src/studio/antagon/EffectDisplay.java'),
     path.join(root, 'tests/java/studio/antagon/CoreTest.java'),
   ],
   { stdio: 'inherit' },

@@ -2212,28 +2212,33 @@ public class AntagonHud {
                     {
                         Object player = field(mc, "field_71439_g", "thePlayer");
                         Class<?> effectClass = Class.forName("net.minecraft.potion.PotionEffect");
-                        Object effect = null;
+                        Object shortEffect = null, cappedEffect = null;
                         int[] potionIds = {17, 1, 5, 8, 11, 12};
                         for (int i = 0; i < potionIds.length; i++) {
                             Object activeEffect =
                                     effectClass
                                             .getConstructor(int.class, int.class, int.class)
-                                            .newInstance(potionIds[i], 2400, i % 3);
+                                            .newInstance(potionIds[i], i == 2 ? 120000 : 2400, i % 3);
                             call(
                                     player,
                                     new String[] {"func_70690_d", "addPotionEffect"},
                                     activeEffect);
-                            if (potionIds[i] == 5) effect = activeEffect;
+                            if (potionIds[i] == 17) shortEffect = activeEffect;
+                            if (potionIds[i] == 5) cappedEffect = activeEffect;
                         }
-                        int icon = potionIconIndex(effect);
-                        String duration = potionDuration(effect);
-                        if (icon < 0 || icon >= 32 || !duration.equals("2:00"))
+                        int icon = potionIconIndex(shortEffect);
+                        String duration = potionDuration(shortEffect);
+                        String cappedDuration = potionDuration(cappedEffect);
+                        if (icon < 0
+                                || icon >= 32
+                                || !duration.equals("2:00")
+                                || !cappedDuration.equals("99:99"))
                             throw new IllegalStateException(
                                     "El icono o temporizador compacto de efectos no se pudo preparar.");
                         System.out.println(
                                 "[ANTAGON TEST] Six compact potion icons "
                                         + icon
-                                        + " and 2:00 timers ready");
+                                        + " and 2:00/99:99 timers ready");
                     }
                     break;
                 case 2:
@@ -3355,9 +3360,7 @@ public class AntagonHud {
         try {
             int ticks =
                     ((Number) call(effect, new String[] {"func_76459_b", "getDuration"})).intValue();
-            if (ticks < 0) return "INDEF.";
-            int seconds = (ticks + 19) / 20;
-            return String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60);
+            return EffectDisplay.duration(ticks);
         } catch (Exception ignored) {
             return "--:--";
         }
@@ -3375,7 +3378,7 @@ public class AntagonHud {
                 .intValue();
     }
 
-    private void drawPotionIcon(int iconIndex, int x, int y) throws Exception {
+    private void drawPotionIcon(int iconIndex, int x, int y, int size) throws Exception {
         if (iconIndex < 0) return;
         Class<?> locationClass = Class.forName("net.minecraft.util.ResourceLocation");
         Object location =
@@ -3392,8 +3395,8 @@ public class AntagonHud {
                 y,
                 iconIndex % 8 * 18,
                 198 + iconIndex / 8 * 18,
-                18,
-                18);
+                size,
+                size);
     }
 
     private void effectsOverlay(Object player, float sw, float sh) throws Exception {
@@ -3406,8 +3409,13 @@ public class AntagonHud {
         boolean compact = opt("effects", "style").equals("compacto");
         boolean showName = flag("effects", "name"), showLevel = flag("effects", "level");
         boolean showLabels = showName || showLevel;
-        float w = compact ? (showLabels ? 148 : 62) : 184;
-        float h = compact ? rows * 20 + 6 : 21 + rows * 16;
+        float widthScale = percent("effects", "width"), heightScale = percent("effects", "height");
+        float baseWidth = compact ? (showLabels ? 148 : 62) : 184;
+        float minimumWidth =
+                showLabels ? (compact ? 100 : 96) : (compact ? 62 : 54);
+        float w = Math.max(minimumWidth, baseWidth * widthScale);
+        float rowHeight = Math.max(compact ? 10 : 9, (compact ? 20 : 16) * heightScale);
+        float h = compact ? rows * rowHeight + 6 : 21 + rows * rowHeight;
         place("effects", w, h, sw - w - 12, 64, sw, sh);
         try {
             if (flag("effects", "bg")) rect(0, 0, w, h, 0xCE1E1E1E);
@@ -3429,13 +3437,16 @@ public class AntagonHud {
                                 + (showName && showLevel ? " " : "")
                                 + (showLevel ? level : "");
                 if (compact) {
-                    int y = 3 + row * 20;
-                    drawPotionIcon(potionIconIndex(effect), 4, y);
-                    if (showLabels) text(fit(label, w - 58), 26, y + 4, WHITE);
+                    float rowTop = 3 + row * rowHeight;
+                    int iconSize = Math.min(18, Math.round(rowHeight));
+                    int iconY = Math.round(rowTop + (rowHeight - iconSize) / 2);
+                    int textY = Math.round(rowTop + (rowHeight - 8) / 2);
+                    drawPotionIcon(potionIconIndex(effect), 4, iconY, iconSize);
+                    if (showLabels) text(fit(label, w - 58), 26, textY, WHITE);
                     String duration = potionDuration(effect);
-                    text(duration, w - width(duration) - 4, y + 4, GRAY);
+                    text(duration, w - width(duration) - 4, textY, GRAY);
                 } else {
-                    float y = 19 + row * 16;
+                    int y = Math.round(19 + row * rowHeight);
                     if (showLabels) text(fit(label, w - 54), 7, y, WHITE);
                     text(potionDuration(effect), w - 45, y, GRAY);
                 }

@@ -147,7 +147,7 @@ async function main() {
       )
     )
       throw Error('El selector del menú no completó los flujos de cuentas Offline y Microsoft.');
-    if (!/\[ANTAGON TEST\] Six compact potion icons \d+ and 2:00 timers ready/.test(logfile))
+    if (!/\[ANTAGON TEST\] Six compact potion icons \d+ and 2:00\/99:99 timers ready/.test(logfile))
       throw Error('No se pudieron preparar seis iconos y temporizadores del HUD compacto de efectos.');
     if (!logfile.includes('[ANTAGON TEST] Inventory opened for font texture-state check'))
       throw Error('No se abrió el inventario para comprobar la textura del texto.');

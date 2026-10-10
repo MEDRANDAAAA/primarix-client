@@ -81,7 +81,7 @@ final class ModuleRegistry {
         "Límites visuales de entidades", "Color del efecto de daño", "Atajos para mensajes",
         "Tamaño, fondo y números", "Elimina el bloqueo de clic", "Brillo máximo",
         "Tu nombre en tercera persona", "Objetos animados en el suelo",
-        "Efectos activos y tiempo restante",
+        "Efectos activos, duración, ancho y alto",
         "Corazones de otros jugadores y tu vida en primera persona"
     };
     private static final int[] CATEGORY = {
@@ -137,6 +137,8 @@ final class ModuleRegistry {
         if (mod.equals("effects"))
             return new String[][] {
                 {"size", "TAMAÑO", "range:50:200:5:%", "75%"},
+                {"width", "ANCHO", "range:50:200:5:%", "100%"},
+                {"height", "ALTO", "range:50:200:5:%", "100%"},
                 {"style", "VISTA", "compacto,detallado", "compacto"},
                 {"name", "NOMBRE", "on,off", "off"},
                 {"level", "NIVEL", "on,off", "off"},
