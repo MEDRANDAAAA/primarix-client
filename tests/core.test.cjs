@@ -3,10 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { zipSync } = require('fflate');
 const { validateSettings, offlineAccount } = require('../electron/settings.cjs');
 const {
   allowed,
   checkURL,
+  extractNatives,
   mavenPath,
   redact,
   extract,
@@ -14,6 +16,27 @@ const {
   updateResourcePackOptions,
   cloneGameProfile,
 } = require('../electron/runtime.cjs');
+test('Minecraft instances extract native libraries into separate game directories', async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'primarix-instance-natives-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const assets = path.join(directory, 'assets');
+  const firstArchive = path.join(directory, 'first-natives.jar');
+  const secondArchive = path.join(directory, 'second-natives.jar');
+  const firstDir = path.join(directory, 'instances', 'first');
+  const secondDir = path.join(directory, 'instances', 'second');
+  fs.mkdirSync(assets, { recursive: true });
+  fs.writeFileSync(firstArchive, zipSync({ 'natives/OpenAL64.dll': Buffer.from('first') }));
+  fs.writeFileSync(secondArchive, zipSync({ 'natives/OpenAL64.dll': Buffer.from('second') }));
+
+  await Promise.all([
+    extractNatives([firstArchive], path.join(firstDir, 'natives'), assets, 'windows'),
+    extractNatives([secondArchive], path.join(secondDir, 'natives'), assets, 'windows'),
+  ]);
+
+  assert.equal(fs.readFileSync(path.join(firstDir, 'natives', 'OpenAL64.dll'), 'utf8'), 'first');
+  assert.equal(fs.readFileSync(path.join(secondDir, 'natives', 'OpenAL64.dll'), 'utf8'), 'second');
+  assert.equal(fs.existsSync(path.join(directory, 'natives')), false);
+});
 test('offline UUID matches Minecraft name based UUID', () => {
   assert.equal(offlineAccount('Notch').id, 'b50ad385829d3141a2167e7d7539ba7f');
   assert.equal(offlineAccount('Notch').accessToken, '0');

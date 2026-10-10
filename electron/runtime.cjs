@@ -85,6 +85,21 @@ async function download(url, file, hash, algorithm = 'sha1', emit = () => {}) {
     }
   }
 }
+async function extractNatives(nativeJars, natives, assets, platform = PLATFORM, arch = process.arch) {
+  await fsp.mkdir(natives, { recursive: true });
+  for (const file of nativeJars) {
+    const entries = unzipSync(await fsp.readFile(file), {
+      filter: (entry) => NATIVE_FILE.test(entry.name) && !/twitch/i.test(entry.name) && entry.originalSize < 2e7,
+    });
+    for (const [name, data] of Object.entries(entries))
+      await fsp.writeFile(path.join(natives, path.basename(name)), data);
+  }
+  if (platform === 'osx' && arch === 'arm64') {
+    const arm = path.join(assets, 'natives-arm64');
+    for (const name of fs.readdirSync(arm))
+      if (NATIVE_FILE.test(name)) await fsp.copyFile(path.join(arm, name), path.join(natives, name));
+  }
+}
 function allowed(lib, platform = PLATFORM) {
   if (!lib.rules) return true;
   let ok = false;
@@ -319,20 +334,8 @@ class Runtime {
       },
       5,
     );
-    const natives = path.join(this.root, 'natives');
-    await fsp.mkdir(natives, { recursive: true });
-    for (const file of nativeJars) {
-      const entries = unzipSync(await fsp.readFile(file), {
-        filter: (e) => NATIVE_FILE.test(e.name) && !/twitch/i.test(e.name) && e.originalSize < 2e7,
-      });
-      for (const [name, data] of Object.entries(entries))
-        await fsp.writeFile(path.join(natives, path.basename(name)), data);
-    }
-    if (PLATFORM === 'osx' && process.arch === 'arm64') {
-      const arm = path.join(this.assets, 'natives-arm64');
-      for (const name of fs.readdirSync(arm))
-        if (NATIVE_FILE.test(name)) await fsp.copyFile(path.join(arm, name), path.join(natives, name));
-    }
+    const natives = path.join(this.game, 'natives');
+    await extractNatives(nativeJars, natives, this.assets);
     const assetRoot = path.join(this.root, 'assets');
     const indexFile = path.join(assetRoot, 'indexes', meta.assetIndex.id + '.json');
     await download(meta.assetIndex.url, indexFile, meta.assetIndex.sha1);
@@ -550,6 +553,7 @@ module.exports = {
   allowed,
   mavenPath,
   extract,
+  extractNatives,
   installSplashBranding,
   installGlassResourcePack,
   offlineAccount: require('./settings.cjs').offlineAccount,
