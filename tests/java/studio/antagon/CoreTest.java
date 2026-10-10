@@ -80,6 +80,10 @@ public final class CoreTest {
         check("9.5/10".equals(DamageIndicatorDisplay.label("vida", 19, 20)));
         check("75%".equals(DamageIndicatorDisplay.label("porcentaje", 15, 20)));
         check("0%".equals(DamageIndicatorDisplay.label("porcentaje", 0, 0)));
+        check(DamageIndicatorDisplay.heartBillboardScale(1f) > 0.02f);
+        check(
+                DamageIndicatorDisplay.heartBillboardScale(2f)
+                        == 2 * DamageIndicatorDisplay.heartBillboardScale(1f));
         check("off".equals(ModuleRegistry.defaultValue("chat.transparent")));
         check(MenuLayout.homeScale(854, 480) == 1f);
         check(MenuLayout.homeScale(1360, 719) == 1f);

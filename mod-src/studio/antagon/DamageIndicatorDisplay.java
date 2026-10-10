@@ -1,7 +1,13 @@
 package studio.antagon;
 
 final class DamageIndicatorDisplay {
+    private static final float HEART_BILLBOARD_SCALE = 0.02666667f;
+
     private DamageIndicatorDisplay() {}
+
+    static float heartBillboardScale(float size) {
+        return HEART_BILLBOARD_SCALE * size;
+    }
 
     static String label(String display, float health, float maximum) {
         if (display.equals("vida")) return hearts(health) + "/" + hearts(maximum);

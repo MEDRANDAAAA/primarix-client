@@ -5675,7 +5675,7 @@ public class AntagonHud {
         Object renderManager = call(mc, new String[] {"func_175598_ae", "getRenderManager"});
         float size = percent("damageindicator", "size");
         int count = heartCount(maximum, absorption);
-        float unit = 0.72f, step = 6.5f, width = heartWidth(count, unit, step);
+        float unit = 0.82f, step = 7.2f, width = heartWidth(count, unit, step);
         GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
         GL11.glPushMatrix();
         try {
@@ -5683,12 +5683,13 @@ public class AntagonHud {
             GL11.glNormal3f(0, 1, 0);
             GL11.glRotatef(-getF(renderManager, "field_78735_i"), 0, 1, 0);
             GL11.glRotatef((view == 2 ? -1 : 1) * getF(renderManager, "field_78732_j"), 1, 0, 0);
-            float scale = 0.013333335f * size;
+            float scale = DamageIndicatorDisplay.heartBillboardScale(size);
             GL11.glScalef(-scale, -scale, scale);
             GL11.glDisable(GL11.GL_LIGHTING);
             GL11.glEnable(GL11.GL_BLEND);
             GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
             GL11.glDisable(GL11.GL_TEXTURE_2D);
+            GL11.glDepthMask(false);
             drawHealthHearts(-width / 2, 0, health, maximum, absorption, unit, step);
         } finally {
             GL11.glPopMatrix();
@@ -5752,6 +5753,21 @@ public class AntagonHud {
         float width = heartWidth(count, unit, step);
         if (flag("damageindicator", "bg"))
             rect(left - 3, top - 2, width + 6, HEART_MASK.length * unit + 4, 0x99000000);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glBegin(GL11.GL_QUADS);
+        for (int heart = 0; heart < count; heart++) {
+            for (int row = 0; row < HEART_MASK.length; row++) {
+                for (int column = 0; column < HEART_MASK[row].length(); column++) {
+                    if (HEART_MASK[row].charAt(column) != '1') continue;
+                    float x = left + heart * step + column * unit + unit * .65f;
+                    float y = top + row * unit + unit * .65f;
+                    GL11.glColor4f(.04f, .04f, .04f, .95f);
+                    heartQuad(x, y, unit);
+                }
+            }
+        }
+        GL11.glEnd();
+        GL11.glBegin(GL11.GL_QUADS);
         for (int heart = 0; heart < count; heart++) {
             boolean gold = heart >= healthCount;
             int heartIndex = gold ? heart - healthCount : heart;
@@ -5767,10 +5783,27 @@ public class AntagonHud {
                                     : points > 0 && column < HEART_MASK[row].length() / 2
                                             ? full
                                             : empty;
-                    rect(left + heart * step + column * unit, top + row * unit, unit, unit, color);
+                    GL11.glColor4f(
+                            (color >> 16 & 255) / 255f,
+                            (color >> 8 & 255) / 255f,
+                            (color & 255) / 255f,
+                            (color >>> 24) / 255f);
+                    heartQuad(
+                            left + heart * step + column * unit,
+                            top + row * unit,
+                            unit);
                 }
             }
         }
+        GL11.glEnd();
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+    }
+
+    private void heartQuad(float x, float y, float unit) {
+        GL11.glVertex2f(x, y);
+        GL11.glVertex2f(x + unit, y);
+        GL11.glVertex2f(x + unit, y + unit);
+        GL11.glVertex2f(x, y + unit);
     }
 
     /**
