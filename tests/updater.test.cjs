@@ -111,6 +111,65 @@ test('Windows NSIS updater waits for its installer and reports success', (t) => 
   assert.match(fs.readFileSync(path.join(logDirectory, 'updater.log'), 'utf8'), /Actualización instalada/);
 });
 
+test('Windows updater starts PowerShell through WScript and waits for its ready signal', async (t) => {
+  if (process.platform !== 'win32') return t.skip('Windows updater launcher integration test.');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'primarix-updater-launcher-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const directory = path.join(root, 'paths with spaces');
+  fs.mkdirSync(directory);
+  const script = path.join(directory, 'updater script.ps1');
+  const readyFile = path.join(directory, 'updater ready');
+  const doneFile = path.join(directory, 'updater done');
+  const logFile = path.join(directory, 'updater log');
+  const target = path.join(directory, 'Primarix Client.exe');
+  fs.writeFileSync(
+    script,
+    '\uFEFFparam([string]$ReadyFile,[string]$DoneFile,[string]$LogFile,[string]$Target)\n' +
+      'Set-Content -LiteralPath $LogFile -Value $Target\n' +
+      "[System.IO.File]::WriteAllText($ReadyFile, 'ready')\n" +
+      'Start-Sleep -Milliseconds 500\n' +
+      "[System.IO.File]::WriteAllText($DoneFile, 'completed')\n",
+    'utf8',
+  );
+
+  const updaterPath = path.join(__dirname, '..', 'electron', 'updater.cjs');
+  execFileSync(
+    process.execPath,
+    [
+      '-e',
+      `const updater = require(${JSON.stringify(updaterPath)}); updater.launchWindowsUpdater(JSON.parse(process.argv[1]), process.argv[2], process.argv[3]).then(() => process.exit(0), (error) => { console.error(error); process.exit(1); });`,
+      JSON.stringify([
+        '-NoProfile',
+        '-WindowStyle',
+        'Hidden',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        script,
+        '-ReadyFile',
+        readyFile,
+        '-DoneFile',
+        doneFile,
+        '-LogFile',
+        logFile,
+        '-Target',
+        target,
+      ]),
+      readyFile,
+      logFile,
+    ],
+    { stdio: 'pipe', timeout: 30_000 },
+  );
+
+  assert.equal(fs.readFileSync(readyFile, 'utf8'), 'ready');
+  assert.equal(fs.readFileSync(logFile, 'utf8').trim(), target);
+  const deadline = Date.now() + 10_000;
+  while (!fs.existsSync(doneFile) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(fs.readFileSync(doneFile, 'utf8'), 'completed');
+});
+
 test('release assets keep legacy Windows and macOS package support', () => {
   assert.equal(
     updater.releaseAsset({ tag_name: '0.1.39', assets: [asset('Antagon-Client-Windows.zip')] }, 'win32', '0.1.38')

@@ -220,8 +220,19 @@ function launchDetached(command, args, options) {
   });
 }
 
-async function launchDetachedAndWait(command, args, options, readyFile, logFile) {
-  const child = spawn(command, args, options);
+async function launchWindowsUpdater(args, readyFile, logFile) {
+  const systemRoot = process.env.SystemRoot || 'C:\\Windows';
+  const powershell = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const scriptHost = path.join(systemRoot, 'System32', 'wscript.exe');
+  const launcherFile = path.join(path.dirname(readyFile), 'launch-update.vbs');
+  const commandLine = [powershell, ...args].map((argument) => `"${String(argument).replace(/"/g, '\\"')}"`).join(' ');
+  const launcher = `Set shell = CreateObject("WScript.Shell")\r\nshell.Run "${commandLine.replace(/"/g, '""')}", 0, False\r\n`;
+  await fsp.writeFile(launcherFile, launcher, 'ascii');
+
+  const child = spawn(scriptHost, [launcherFile], {
+    stdio: 'ignore',
+    windowsHide: true,
+  });
   let spawnError = null;
   let exitCode = null;
   child.once('error', (error) => {
@@ -231,7 +242,7 @@ async function launchDetachedAndWait(command, args, options, readyFile, logFile)
     exitCode = code;
   });
 
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     try {
       await fsp.access(readyFile);
@@ -241,12 +252,12 @@ async function launchDetachedAndWait(command, args, options, readyFile, logFile)
       if (error.code !== 'ENOENT') throw error;
     }
     if (spawnError) throw Error(`No se pudo iniciar el actualizador de Windows: ${spawnError.message}`);
-    if (exitCode !== null) {
-      throw Error(`El actualizador de Windows se cerró antes de iniciar (código ${exitCode}). Registro: ${logFile}`);
+    if (exitCode !== null && exitCode !== 0) {
+      throw Error(`El iniciador de Windows se cerró (código ${exitCode}). Registro: ${logFile}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw Error(`El actualizador de Windows no confirmó el inicio. Registro: ${logFile}`);
+  throw Error(`PowerShell no confirmó el inicio del actualizador. Registro: ${logFile}`);
 }
 
 async function install(update, progress) {
@@ -314,17 +325,7 @@ async function install(update, progress) {
       '-LogFile',
       logFile,
     ];
-    await launchDetachedAndWait(
-      'powershell.exe',
-      args,
-      {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      },
-      readyFile,
-      logFile,
-    );
+    await launchWindowsUpdater(args, readyFile, logFile);
   } else if (process.platform === 'win32') {
     await fsp.mkdir(unpacked);
     await extract(archive, unpacked);
@@ -372,6 +373,7 @@ module.exports = {
   newer,
   releaseAsset,
   findWindowsApp,
+  launchWindowsUpdater,
   windowsPortableSwap: WINDOWS_PORTABLE_SWAP,
   windowsInstallerSwap: WINDOWS_INSTALLER_SWAP,
   repository: REPO,
