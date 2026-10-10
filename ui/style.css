@@ -799,8 +799,7 @@ main {
 #view-play {
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 72% 12%, color-mix(in srgb, var(--red), transparent 90%), transparent 42%),
-    #0b0d14;
+    radial-gradient(ellipse at 72% 12%, color-mix(in srgb, var(--red), transparent 90%), transparent 42%), #0b0d14;
 }
 #map {
   position: absolute;
@@ -1826,4 +1825,7 @@ button:not(.tab):not(.account):not(.play):not(.primary):hover:not(:disabled) {
   box-shadow:
     inset 0 1px rgb(240 255 255 / 24%),
     0 0 12px color-mix(in srgb, var(--accent), transparent 58%);
+}
+button:not(.tab):not(.account) {
+  color: #000;
 }

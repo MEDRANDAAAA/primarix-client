@@ -211,6 +211,12 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     });
     await page.screenshot({ path: path.join(root, 'docs/settings.png') });
     await page.click('[data-view="play"]');
+    assert.equal(
+      await page
+        .locator('button:not(.tab):not(.account)')
+        .evaluateAll((buttons) => buttons.every((button) => getComputedStyle(button).color === 'rgb(0, 0, 0)')),
+      true,
+    );
     await page.waitForFunction(
       () =>
         document.querySelector('#view-play').classList.contains('active') &&

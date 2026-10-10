@@ -16,8 +16,8 @@ O app para Windows não é assinado por uma conta paga da Microsoft, por isso o 
 
 Ao abrir, o launcher compara sua versão com a última GitHub Release e mostra **Atualizar para x.y.z** quando há uma versão
 mais nova. Para distribuir uma atualização Windows, aumente `version` em `package.json` e envie a tag correspondente ao
-repositório (por exemplo, `v0.1.39` para a versão `0.1.39`). O workflow `.github/workflows/publish-release.yml`
-compila, testa e publica automaticamente `Primarix-Client-Portable-0.1.39.exe`. Ao abrir o launcher ou clicar no botão
+repositório (por exemplo, `v0.1.40` para a versão `0.1.40`). O workflow `.github/workflows/publish-release.yml`
+compila, testa e publica automaticamente `Primarix-Client-Portable-0.1.40.exe`. Ao abrir o launcher ou clicar no botão
 de atualização, seus amigos podem instalar a nova versão sem baixar ou substituir o executável manualmente; o launcher
 verifica o SHA-256 e reinicia já atualizado. Minecraft precisa estar fechado para instalar. As versões que consultam a
 mesma GitHub Release recebem as versões publicadas ali.
