@@ -9,7 +9,7 @@ com Forge, e um mod próprio adiciona HUD, mods de PvP e um menu no **Shift dire
 
 Baixe a versão mais recente em [Releases](https://github.com/MEDRANDAAAA/primarix-client/releases/latest):
 
-- **Windows (recomendado):** `Primarix-Client-Setup-x.y.z.exe`. Instale uma vez e abra **Primarix Client** pelo atalho;
+- **Windows (recomendado):** `Primarix-Client-Setup.exe`. Instale uma vez e abra **Primarix Client** pelo atalho;
   o launcher instalará as atualizações seguintes na mesma instalação e voltará a abrir.
 - **Windows portable:** `Primarix-Client-Portable-x.y.z.exe`, para usar sem instalar. As atualizações continuam usando o
   executável portable original.

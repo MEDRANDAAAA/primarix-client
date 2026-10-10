@@ -35,15 +35,12 @@ test('Windows updates select the versioned portable executable and require a SHA
   );
 });
 
-test('Windows installations select the versioned NSIS installer instead of the portable executable', () => {
+test('Windows installations select the unversioned NSIS installer instead of the portable executable', () => {
   const release = {
     tag_name: 'v0.1.39',
-    assets: [asset('Primarix-Client-Portable-0.1.39.exe'), asset('Primarix-Client-Setup-0.1.39.exe')],
+    assets: [asset('Primarix-Client-Portable-0.1.39.exe'), asset('Primarix-Client-Setup.exe')],
   };
-  assert.equal(
-    updater.releaseAsset(release, 'win32', '0.1.38', 'installed').assetName,
-    'Primarix-Client-Setup-0.1.39.exe',
-  );
+  assert.equal(updater.releaseAsset(release, 'win32', '0.1.38', 'installed').assetName, 'Primarix-Client-Setup.exe');
   assert.equal(
     updater.releaseAsset(release, 'win32', '0.1.38', 'portable').assetName,
     'Primarix-Client-Portable-0.1.39.exe',

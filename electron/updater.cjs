@@ -138,7 +138,7 @@ try {
 const ASSET_NAMES = {
   win32: {
     portable: ['Primarix-Client-Portable-{version}.exe', 'Antagon-Client-Windows.zip', 'Primarix-Launcher-Windows.zip'],
-    installed: ['Primarix-Client-Setup-{version}.exe'],
+    installed: ['Primarix-Client-Setup.exe'],
   },
   darwin: ['Antagon-Client-macOS.zip', 'Primarix-Launcher-macOS.zip'],
 };
@@ -166,7 +166,7 @@ function releaseAsset(release, platform, current, distribution = 'portable') {
   return {
     version,
     assetName: asset.name,
-    format: asset.name.startsWith('Primarix-Client-Setup-')
+    format: asset.name.startsWith('Primarix-Client-Setup')
       ? 'nsis-installer'
       : asset.name.endsWith('.exe')
         ? 'portable-exe'
