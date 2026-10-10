@@ -1376,13 +1376,20 @@ public class AntagonHud {
             long previousModified = profileSnapshotModified;
             String previousNickname = profileNickname, previousMode = profileMode;
             refreshProfileSnapshot(force);
-            if (profileSnapshotModified == previousModified
-                    && profileNickname.equals(previousNickname)
-                    && profileMode.equals(previousMode)) return;
-            if (profileMode.equals("offline")) LocalIdentity.applyOffline(mc, profileNickname);
+            boolean profileChanged =
+                    profileSnapshotModified != previousModified
+                            || !profileNickname.equals(previousNickname)
+                            || !profileMode.equals(previousMode);
+            boolean identityChanged = false;
+            if (profileMode.equals("offline")
+                    && !profileNickname.equals(LocalIdentity.username(mc))) {
+                LocalIdentity.applyOffline(mc, profileNickname);
+                identityChanged = true;
+            }
             Cosmetics.setLocalAlias(profileNickname);
-            System.out.println(
-                    "[PRIMARIX] Active " + profileMode + " nickname applied: " + profileNickname);
+            if (profileChanged || identityChanged)
+                System.out.println(
+                        "[PRIMARIX] Active " + profileMode + " nickname applied: " + profileNickname);
         } catch (Exception e) {
             if (PROFILE_SNAPSHOT.exists()) System.err.println("[PRIMARIX] Could not read selected local nick: " + e);
         }
@@ -2150,6 +2157,8 @@ public class AntagonHud {
                         PROFILE_SNAPSHOT.toPath(),
                         "SmokeAlt\noffline\nSmokeMain\n@premium:SmokePremium\n"
                                 .getBytes(StandardCharsets.UTF_8));
+                LocalIdentity.applyOffline(mc, "SmokeStale");
+                refreshProfileSnapshot(true);
                 syncLocalProfile(true);
                 if (!"SmokeAlt".equals(Cosmetics.localAlias()))
                     throw new IllegalStateException(

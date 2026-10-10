@@ -24,9 +24,12 @@ final class LocalIdentity {
                         .getConstructor(String.class, String.class, String.class, String.class)
                         .newInstance(nickname, uuid, "0", "legacy");
         setField(minecraft, session, "field_71449_j", "session");
-        Object applied = field(minecraft, "field_71449_j", "session");
-        String appliedName = (String) call(applied, new String[] {"func_111285_a", "getUsername"});
-        if (!nickname.equals(appliedName))
+        if (!nickname.equals(username(minecraft)))
             throw new IllegalStateException("Minecraft did not accept the selected offline nickname.");
+    }
+
+    static String username(Object minecraft) throws Exception {
+        Object session = field(minecraft, "field_71449_j", "session");
+        return (String) call(session, new String[] {"func_111285_a", "getUsername"});
     }
 }
