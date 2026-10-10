@@ -3729,9 +3729,6 @@ public class AntagonHud {
                         && (sprintToggled || menu != null && menu.editing))
                     panel("togglesprint", "SPRINT (TOGGLED)", 12, 204, sw, sh);
                 if (enabled("clock")) panel("clock", clockText(), 210, 12, sw, sh);
-                if (enabled("damageindicator")
-                        && field(mc, "field_71462_r", "currentScreen") == null)
-                    damageIndicatorHud(player, sw, sh);
             } finally {
                 end();
             }
@@ -5695,39 +5692,6 @@ public class AntagonHud {
             GL11.glPopMatrix();
             GL11.glPopAttrib();
         }
-    }
-
-    private void damageIndicatorHud(Object player, float width, float height) throws Exception {
-        Object settings = field(mc, "field_71474_y", "gameSettings");
-        if (((Number) field(settings, "field_74320_O", "thirdPersonView")).intValue() != 0) return;
-        float health = entityHealth(player);
-        float maximum =
-                ((Number) call(player, new String[] {"func_110138_aP", "getMaxHealth"})).floatValue();
-        float absorption =
-                flag("damageindicator", "absorption")
-                        ? ((Number) call(player, new String[] {"func_110139_bj", "getAbsorptionAmount"}))
-                                .floatValue()
-                        : 0;
-        String display = opt("damageindicator", "display");
-        if (!display.equals("corazones")) {
-            String label =
-                    "\u2764 "
-                            + DamageIndicatorDisplay.label(display, health, maximum);
-            text(label, (width - stringWidth(font, label)) / 2, height - 62, WHITE);
-            return;
-        }
-        float scale = 1.75f * percent("damageindicator", "size");
-        float unit = 0.72f * scale, step = 6.5f * scale;
-        int count = heartCount(maximum, absorption);
-        float rowWidth = heartWidth(count, unit, step);
-        drawHealthHearts(
-                (width - rowWidth) / 2,
-                height - 66,
-                health,
-                maximum,
-                absorption,
-                unit,
-                step);
     }
 
     private static int heartCount(float maximum, float absorption) {

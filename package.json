@@ -1,7 +1,7 @@
 {
   "name": "primarix-client",
   "productName": "Primarix Launcher",
-  "version": "0.1.55",
+  "version": "0.1.56",
   "description": "Launcher y cliente PvP de Minecraft 1.8.9 con HUD configurable.",
   "main": "electron/main.cjs",
   "author": "Annth",
