@@ -868,13 +868,15 @@ public class AntagonHud {
         }
         int addOfflineY = rowY + shown * rowHeight;
         int buttonHeight = Math.max(1, Math.round(20 * scale));
+        int textFieldY = Math.max(1, Math.round(2 * scale));
         int saveWidth = Math.max(40, Math.round(58 * scale));
         if (profileInputActive) {
             int inputX = bounds[0] + inset;
             int inputY = addOfflineY + Math.max(1, (rowHeight - buttonHeight) / 2);
+            int textY = inputY + textFieldY;
             int inputWidth = contentWidth - saveWidth - gap;
             if (profileTextField == null) {
-                profileTextField = createProfileTextField(inputX, inputY, inputWidth, buttonHeight);
+                profileTextField = createProfileTextField(inputX, textY, inputWidth, buttonHeight);
                 call(profileTextField, new String[] {"func_146203_f", "setMaxStringLength"}, 16);
                 call(profileTextField, new String[] {"func_146185_a", "setEnableBackgroundDrawing"}, false);
                 call(profileTextField, new String[] {"func_146193_g", "setTextColor"}, WHITE);
@@ -883,7 +885,7 @@ public class AntagonHud {
                 call(profileTextField, new String[] {"func_146202_e", "setCursorPositionEnd"});
             } else {
                 setField(profileTextField, inputX, "field_146209_f", "xPosition");
-                setField(profileTextField, inputY, "field_146210_g", "yPosition");
+                setField(profileTextField, textY, "field_146210_g", "yPosition");
                 setField(profileTextField, inputWidth, "field_146218_h", "width");
                 setField(profileTextField, buttonHeight, "field_146219_i", "height");
             }
@@ -1294,17 +1296,6 @@ public class AntagonHud {
             rect(fieldX, fieldY, fieldWidth, fieldHeight, 0xFF101217);
             outline(fieldX, fieldY, fieldWidth, fieldHeight, 0xFFFF2F61);
             if (profileTextField != null) {
-                if (((String)
-                                        call(
-                                                profileTextField,
-                                                new String[] {"func_146179_b", "getText"}))
-                                .isEmpty())
-                    scaledMenuText(
-                            "Nick de 3 a 16 caracteres",
-                            fieldX + Math.round(5 * scale),
-                            fieldY + Math.round(5 * scale),
-                            GRAY,
-                            scale);
                 call(profileTextField, new String[] {"func_146194_f", "drawTextBox"});
             }
         }
