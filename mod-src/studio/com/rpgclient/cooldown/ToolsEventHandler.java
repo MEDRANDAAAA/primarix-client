@@ -33,7 +33,7 @@ public class ToolsEventHandler {
     private static Field guiLeftField;
     private static Field guiTopField;
     private static boolean fieldsInitialized;
-    private static java.util.Set<ItemStack> cachedRegisteredItems = new java.util.HashSet<ItemStack>();
+    private static java.util.Set<String> cachedRegisteredItems = new java.util.HashSet<String>();
     private static long cachedToolsRevision = -1L;
     private static int cachedFrame = 0;
     private static int lastCacheUpdateFrame = -1;
@@ -131,7 +131,9 @@ public class ToolsEventHandler {
                 ToolsProfile profile = ToolsManager.getActiveProfile();
                 if (profile != null) {
                     for (ItemStack item : profile.getItems()) {
-                        if (item != null) cachedRegisteredItems.add(item);
+                        if (item != null && item.getItem() != null) {
+                            cachedRegisteredItems.add(CooldownManager.identityFingerprint(item));
+                        }
                     }
                 }
                 cachedToolsRevision = toolsRevision;
@@ -141,7 +143,8 @@ public class ToolsEventHandler {
 
         for (Slot slot : slots) {
             ItemStack stack = slot.getStack();
-            if (stack != null && cachedRegisteredItems.contains(stack)) {
+            if (stack != null && stack.getItem() != null
+                    && cachedRegisteredItems.contains(CooldownManager.identityFingerprint(stack))) {
                 int left = getGuiOffset(gui, "guiLeft") + slot.xDisplayPosition;
                 int top = getGuiOffset(gui, "guiTop") + slot.yDisplayPosition;
                 drawOverlay(left, top);
