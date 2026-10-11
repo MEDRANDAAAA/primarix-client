@@ -115,6 +115,11 @@ public final class CoreTest {
         check(MenuLayout.homeScale(854, 480) == 1f);
         check(MenuLayout.homeScale(1360, 719) == 1f);
         check(MenuLayout.homeScale(427, 240) == .5f);
+        check(MenuLayout.profilePageCount(0, 8) == 1);
+        check(MenuLayout.profilePageCount(8, 8) == 1);
+        check(MenuLayout.profilePageCount(9, 8) == 2);
+        check(MenuLayout.profilePageStart(1, 8) == 8);
+        check(MenuLayout.clampProfilePage(4, 9, 8) == 1);
         int[] profileSelector = MenuLayout.profileSelector(854, 480);
         check(profileSelector[0] + profileSelector[2] + 8 == 854);
         check(profileSelector[1] == 8 && profileSelector[3] == 30);

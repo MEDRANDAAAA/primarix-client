@@ -27,7 +27,14 @@ const { DiscordPresence } = require('./discord.cjs');
 const { VoiceGateway } = require('./voice.cjs');
 const { syncGameAccent } = require('./game-theme.cjs');
 const { DEFAULTS, validateSettings, offlineAccount } = require('./settings.cjs');
-const { applyCommand: applyGameProfileCommand, snapshot: gameProfilesSnapshot } = require('./game-profiles.cjs');
+const {
+  applyCommand: applyGameProfileCommand,
+  instanceSettings: gameInstanceSettings,
+  readInstanceProfile,
+  snapshot: gameProfilesSnapshot,
+  writeInstanceProfile,
+} = require('./game-profiles.cjs');
+const { isAllowedLauncherView } = require('./launcher-views.cjs');
 app.setName('Primarix Client');
 // Call audio must play when a friend joins while the launcher is in the background.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -78,6 +85,8 @@ function loadSettings() {
 }
 function saveSettings(next) {
   const validated = validateSettings(next);
+  const profileSelectionChanged =
+    settings && (validated.nickname !== settings.nickname || validated.mode !== settings.mode);
   const previousNickname = settings?.mode === 'microsoft' && account ? account.name : settings?.nickname;
   const nextNickname = validated.mode === 'microsoft' && account ? account.name : validated.nickname;
   if (previousNickname && nextNickname !== previousNickname) voiceGateway.close();
@@ -85,6 +94,7 @@ function saveSettings(next) {
     for (const gameDir of gameDirectories()) syncGameAccent(gameDir, validated.accentColor);
   atomic(path.join(root, 'settings.json'), JSON.stringify(validated, null, 2));
   settings = validated;
+  if (profileSelectionChanged && !gameInstances.get('main')?.runtime.child) writeInstanceProfile(baseGameDir, settings);
   discord.configure(settings);
   gameActivity();
   if (isGameRunning()) publishGameProfiles();
@@ -92,12 +102,12 @@ function saveSettings(next) {
 }
 const modsDir = path.join(root, 'minecraft/mods');
 const resourcepacksDir = path.join(root, 'minecraft/resourcepacks');
-function publishGameProfiles(message = '') {
-  for (const gameDir of gameDirectories())
+function publishGameProfiles(message = '', targetGameDir = null) {
+  for (const gameDir of targetGameDir ? [targetGameDir] : gameDirectories())
     atomic(
       path.join(gameDir, 'antagon-accounts.txt'),
       gameProfilesSnapshot(
-        settings,
+        gameInstanceSettings(settings, readInstanceProfile(gameDir)),
         message,
         accounts.map((saved) => saved.name),
       ),
@@ -487,7 +497,12 @@ async function gameAction() {
           let message;
           if (command === 'premium') {
             const premium = await login(true);
-            saveSettings({ ...settings, nickname: premium.name, mode: 'microsoft' });
+            const selectedSettings = {
+              ...gameInstanceSettings(settings, readInstanceProfile(game)),
+              nickname: premium.name,
+              mode: 'microsoft',
+            };
+            writeInstanceProfile(game, selectedSettings);
             message = `Cuenta Premium ${premium.name} guardada. El nick visible cambia ahora; el servidor mantiene la cuenta con la que entraste.`;
           } else if (command === 'premium-select') {
             const selected = accounts.find((saved) => saved.name === nickname);
@@ -495,7 +510,12 @@ async function gameAction() {
             account = selected;
             sessionAccount = null;
             await microsoftSession();
-            saveSettings({ ...settings, nickname: account.name, mode: 'microsoft' });
+            const selectedSettings = {
+              ...gameInstanceSettings(settings, readInstanceProfile(game)),
+              nickname: account.name,
+              mode: 'microsoft',
+            };
+            writeInstanceProfile(game, selectedSettings);
             message = `Cuenta Premium ${account.name} seleccionada. El nick visible cambia ahora; el servidor mantiene la cuenta con la que entraste.`;
           } else if (command === 'premium-remove') {
             const index = accounts.findIndex((saved) => saved.name === nickname);
@@ -508,17 +528,25 @@ async function gameAction() {
               else saveSettings({ ...settings, nickname: account.name, mode: 'microsoft' });
             }
             saveAccountRegistry();
+            const selectedSettings = gameInstanceSettings(settings, readInstanceProfile(game));
+            if (selectedSettings.mode === 'microsoft' && selectedSettings.nickname === nickname)
+              writeInstanceProfile(game, { ...selectedSettings, mode: 'offline' });
             message = `${nickname} se quitó de las cuentas guardadas.`;
           } else {
-            const result = applyGameProfileCommand(settings, command, nickname);
-            saveSettings(result.settings);
-            message = `${settings.nickname} seleccionado. Sal al menú principal y vuelve a entrar; la partida actual no cambia.`;
+            const result = applyGameProfileCommand(
+              gameInstanceSettings(settings, readInstanceProfile(game)),
+              command,
+              nickname,
+            );
+            saveSettings({ ...settings, quickNicknames: result.settings.quickNicknames });
+            writeInstanceProfile(game, result.settings);
+            message = `${result.settings.nickname} seleccionado. Sal al menú principal y vuelve a entrar; la partida actual no cambia.`;
           }
-          publishGameProfiles(message);
+          publishGameProfiles(message, game);
           if (win && !win.isDestroyed() && !win.webContents.isDestroyed())
             win.webContents.send('settings:updated', settings);
         } catch (error) {
-          publishGameProfiles(error.message);
+          publishGameProfiles(error.message, game);
         }
       } catch (error) {
         if (error.code !== 'ENOENT') throw error;
@@ -527,7 +555,7 @@ async function gameAction() {
       try {
         const view = (await fs.promises.readFile(file, 'utf8')).trim();
         await fs.promises.unlink(file);
-        if (!['settings', 'friends', 'admin'].includes(view)) continue;
+        if (!isAllowedLauncherView(view)) continue;
         if (view === 'admin' && !(await community?.access())?.isAdmin) continue;
         if (!win || win.isDestroyed()) continue;
         if (win.isMinimized()) win.restore();
@@ -596,20 +624,6 @@ async function startGame(server, target = null) {
       message: isGameRunning() ? 'Preparando otra instancia' : 'Preparando Minecraft',
       percent: 0,
     });
-    let active;
-    if (settings.mode === 'offline') active = offlineAccount(settings.nickname);
-    else {
-      emit({ phase: 'preparing', message: 'Autenticando tu cuenta', percent: 0 });
-      active = await microsoftSession();
-    }
-    await communityReady;
-    let access = { isAdmin: false };
-    if (settings.mode === 'microsoft') {
-      if (community?.me?.mcUuid !== active.id) await connectCommunity();
-      if (!community?.me) throw Error('No se pudo verificar tu cuenta de Primarix.');
-      access = await community.requireActive();
-    }
-    publishGameProfiles();
     let gameDir = target?.gameDir || baseGameDir;
     let gameRuntime = target?.runtime || baseRuntime;
     if (!target && isGameRunning()) {
@@ -618,15 +632,46 @@ async function startGame(server, target = null) {
       await cloneGameProfile(runtime.game, gameDir);
       gameRuntime = new Runtime(root, assets, emit, gameDir);
     }
+    let instanceProfile = readInstanceProfile(gameDir);
+    if (!instanceProfile) {
+      writeInstanceProfile(gameDir, settings);
+      instanceProfile = readInstanceProfile(gameDir);
+    }
+    const gameSettings = gameInstanceSettings(settings, instanceProfile);
+    if (gameSettings.mode === 'microsoft') {
+      const selectedAccount = accounts.find((saved) => saved.name === gameSettings.nickname);
+      if (!selectedAccount) throw Error('La cuenta Microsoft de esta instancia ya no está guardada.');
+      if (account?.id !== selectedAccount.id) {
+        account = selectedAccount;
+        sessionAccount = null;
+      }
+    }
+    let active;
+    if (gameSettings.mode === 'offline') active = offlineAccount(gameSettings.nickname);
+    else {
+      emit({ phase: 'preparing', message: 'Autenticando tu cuenta', percent: 0 });
+      active = await microsoftSession();
+    }
+    await communityReady;
+    let access = { isAdmin: false };
+    if (gameSettings.mode === 'microsoft') {
+      if (!community?.configured) throw Error('La comunidad de Primarix no está configurada.');
+      if (community.me?.mcUuid !== active.id) {
+        if (community.me) await community.signOut();
+        await community.signIn(active.accessToken);
+      }
+      if (!community?.me) throw Error('No se pudo verificar tu cuenta de Primarix.');
+      access = await community.requireActive();
+    }
     atomic(
       path.join(gameDir, 'antagon-accounts.txt'),
       gameProfilesSnapshot(
-        settings,
+        gameSettings,
         '',
         accounts.map((saved) => saved.name),
       ),
     );
-    const result = await gameRuntime.launch(settings, active, { server, admin: access.isAdmin });
+    const result = await gameRuntime.launch(gameSettings, active, { server, admin: access.isAdmin });
     const id = gameDir === baseGameDir ? 'main' : path.basename(gameDir);
     gameInstances.set(id, { id, gameDir, runtime: gameRuntime });
     runtime = gameRuntime;

@@ -701,10 +701,6 @@ $('#save-quick-nickname').onclick = async () => {
     toast('Ese nick ya está en accesos rápidos.');
     return;
   }
-  if (settings.quickNicknames.length >= 8) {
-    toast('Puedes guardar hasta 8 nicks rápidos.');
-    return;
-  }
   try {
     await persist({ quickNicknames: [...settings.quickNicknames, nickname] });
     renderQuickNicknames();

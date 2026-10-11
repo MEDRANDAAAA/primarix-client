@@ -31,7 +31,7 @@ function validateSettings(input) {
   if (Array.isArray(input?.quickNicknames)) {
     settings.quickNicknames = [
       ...new Set(input.quickNicknames.filter((name) => typeof name === 'string' && NICKNAME.test(name))),
-    ].slice(0, 8);
+    ];
   }
   settings.background = 'scene';
   if (typeof input?.accentColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(input.accentColor)) {

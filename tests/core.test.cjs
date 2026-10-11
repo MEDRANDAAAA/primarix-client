@@ -69,27 +69,13 @@ test('legacy default accent adopts the logo palette while custom colors persist'
   assert.equal(validateSettings({ accentColor: '#E34AB5' }).accentColor, '#f49caf');
   assert.equal(validateSettings({ accentColor: '#3182ce' }).accentColor, '#3182ce');
 });
-test('quick offline nicknames are validated, unique and limited', () => {
+test('quick offline nicknames are validated, unique and not truncated after eight', () => {
   const names = validateSettings({
     quickNicknames: ['PvP_One', 'PvP_One', 'bad name', 'PvP_Two', '3'],
   }).quickNicknames;
   assert.deepEqual(names, ['PvP_One', 'PvP_Two']);
-  assert.equal(
-    validateSettings({
-      quickNicknames: [
-        'Player1',
-        'Player2',
-        'Player3',
-        'Player4',
-        'Player5',
-        'Player6',
-        'Player7',
-        'Player8',
-        'Player9',
-      ],
-    }).quickNicknames.length,
-    8,
-  );
+  const moreThanEight = Array.from({ length: 12 }, (_, index) => `Player${index + 1}`);
+  assert.deepEqual(validateSettings({ quickNicknames: moreThanEight }).quickNicknames, moreThanEight);
 });
 test('selected resource packs persist and preserve the Primarix pack setting', () => {
   const current = 'lang:es_ES\nresourcePacks:["vanilla","Custom.zip"]\nfullscreen:false\n';

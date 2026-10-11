@@ -83,6 +83,10 @@ const { createVoiceServer } = require('../backend/server.js');
       BrowserWindow.getAllWindows()[0].webContents.send('game:open-view', 'settings'),
     );
     await page.waitForFunction(() => document.querySelector('#view-settings').classList.contains('active'));
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].webContents.send('game:open-view', 'voice'),
+    );
+    await page.waitForFunction(() => document.querySelector('#view-voice').classList.contains('active'));
     await page.click('[data-view="voice"]');
     await page.waitForFunction(() => document.querySelector('#view-voice').classList.contains('active'));
     assert.equal(await page.locator('#voice-connect-form').isVisible(), true);

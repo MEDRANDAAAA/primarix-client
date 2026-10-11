@@ -42,6 +42,25 @@ CHAT = [
     "................",
 ]
 
+VOICE = [
+    "................",
+    "....kkkkkkkk....",
+    "...kwwwwwwwwk...",
+    "..kwwwwwwwwwwk..",
+    ".kwwk......kwwk.",
+    ".kwwk......kwwk.",
+    ".kwwk......kwwk.",
+    ".kwwk......kwwk.",
+    ".kwwk......kwwk.",
+    ".kwwk......kwwk.",
+    "..kwwk....kwwk..",
+    "...kwwkkkkwwk...",
+    "....kkkkkkkk....",
+    "......kwwk......",
+    ".......kk.......",
+    "................",
+]
+
 CROWN = [
     "................",
     "................",
@@ -171,6 +190,7 @@ def main():
     tab_logo().save(OUT / "tab-logo.png")
     tab_logo("y", "Y").save(OUT / "tab-logo-admin.png")
     draw(CHAT).save(OUT / "chat.png")
+    draw(VOICE).save(OUT / "voice.png")
     coin().save(OUT / "store.png")
     draw(CROWN).save(OUT / "admin.png")
 

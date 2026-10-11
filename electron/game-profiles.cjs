@@ -1,6 +1,34 @@
 const { validateSettings } = require('./settings.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
+const { atomicWrite } = require('./files.cjs');
 
 const NICKNAME = /^[A-Za-z0-9_]{3,16}$/;
+const PROFILE_FILE = 'antagon-profile.json';
+
+function instanceSettings(settings, profile) {
+  const clean = validateSettings(settings);
+  if (!NICKNAME.test(profile?.nickname || '') || !['offline', 'microsoft'].includes(profile?.mode)) return clean;
+  return { ...clean, nickname: profile.nickname, mode: profile.mode };
+}
+
+function readInstanceProfile(gameDir) {
+  try {
+    const profile = JSON.parse(fs.readFileSync(path.join(gameDir, PROFILE_FILE), 'utf8'));
+    if (!NICKNAME.test(profile?.nickname || '') || !['offline', 'microsoft'].includes(profile.mode))
+      throw Error('El perfil de esta instancia de Minecraft no es válido.');
+    return { nickname: profile.nickname, mode: profile.mode };
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+function writeInstanceProfile(gameDir, settings) {
+  const clean = validateSettings(settings);
+  const target = path.join(gameDir, PROFILE_FILE);
+  atomicWrite(target, JSON.stringify({ nickname: clean.nickname, mode: clean.mode }));
+}
 
 function snapshot(settings, message = '', premiumNicknames = []) {
   const clean = validateSettings(settings);
@@ -28,7 +56,6 @@ function applyCommand(settings, command, nickname) {
         settings: { ...current, nickname, mode: 'offline' },
         message: `${nickname} seleccionado. Sal al menú principal y vuelve a entrar; la partida actual no cambia.`,
       };
-    if (current.quickNicknames.length >= 8) throw Error('Ya guardaste el máximo de 8 nicks.');
     return {
       settings: {
         ...current,
@@ -80,4 +107,4 @@ function currentNickname(nickname) {
   return NICKNAME.test(nickname || '');
 }
 
-module.exports = { applyCommand, snapshot };
+module.exports = { applyCommand, instanceSettings, readInstanceProfile, snapshot, writeInstanceProfile };

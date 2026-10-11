@@ -62,13 +62,16 @@ public class AntagonHud {
     private static final int MENU_BUTTON_ID = 0xA71A;
     private static final int SETTINGS_BUTTON_ID = 0xA71B,
             FRIENDS_BUTTON_ID = 0xA71C,
+            VOICE_BUTTON_ID = 0xA71D,
             ADMIN_BUTTON_ID = 0xA71E,
             ACCOUNTS_BUTTON_ID = 0xA71F;
     private static final int PROFILE_ITEM_ID = 0xA720,
             PROFILE_ADD_OFFLINE_ID = 0xA730,
             PROFILE_USE_OFFLINE_ID = 0xA731,
             PROFILE_ADD_MICROSOFT_ID = 0xA732,
-            PROFILE_REMOVE_ID = 0xA740;
+            PROFILE_REMOVE_ID = 0xA740,
+            PROFILE_PREVIOUS_PAGE_ID = 0xA750,
+            PROFILE_NEXT_PAGE_ID = 0xA751;
     private static final File UI_REQUEST = new File("antagon-ui-request.txt");
     private static final File PROFILE_REQUEST = new File("antagon-profile-request.txt");
     private static final File PROFILE_SNAPSHOT = new File("antagon-accounts.txt");
@@ -97,6 +100,7 @@ public class AntagonHud {
     private final List<ProfileSelectorEntry> profileSelectorEntries =
             new ArrayList<ProfileSelectorEntry>();
     private boolean profileSelectorOpen = false, profileInputActive = false;
+    private int profilePage = 0, profileVisibleRows = 16;
     private String profileInput = "";
     private volatile Object profileSkinTexture;
     private String profileSkinKey = "";
@@ -519,6 +523,22 @@ public class AntagonHud {
                     setProfileSelectorButton(accounts, width, height);
                     buttons.add(accounts);
                 }
+                boolean voiceFound = false;
+                for (Object button : buttons)
+                    if (((Number) field(button, "field_146127_k", "id")).intValue() == VOICE_BUTTON_ID)
+                        voiceFound = true;
+                if (!voiceFound) {
+                    int[] bounds = MenuLayout.homeButton(7, width, height);
+                    Object voice =
+                            newButton(
+                                    VOICE_BUTTON_ID,
+                                    bounds[0],
+                                    bounds[1],
+                                    bounds[2],
+                                    "SALAS DE VOZ");
+                    setField(voice, bounds[3], "field_146121_g", "height");
+                    buttons.add(voice);
+                }
                 if (profileSelectorOpen) refreshProfileSelectorButtons(gui);
                 return;
             }
@@ -540,8 +560,8 @@ public class AntagonHud {
                 }
                 int[] ids =
                         sessionAdmin()
-                                ? new int[] {SETTINGS_BUTTON_ID, FRIENDS_BUTTON_ID, ADMIN_BUTTON_ID}
-                                : new int[] {SETTINGS_BUTTON_ID, FRIENDS_BUTTON_ID};
+                                ? new int[] {SETTINGS_BUTTON_ID, FRIENDS_BUTTON_ID, VOICE_BUTTON_ID, ADMIN_BUTTON_ID}
+                                : new int[] {SETTINGS_BUTTON_ID, FRIENDS_BUTTON_ID, VOICE_BUTTON_ID};
                 int gap = 4, size = 20, total = ids.length * size + (ids.length - 1) * gap;
                 int x = lanX + (rowWidth - total) / 2;
                 for (int id : ids) {
@@ -605,7 +625,9 @@ public class AntagonHud {
         for (Iterator<Object> iterator = buttons.iterator(); iterator.hasNext(); ) {
             int id = ((Number) field(iterator.next(), "field_146127_k", "id")).intValue();
             if ((id >= PROFILE_ITEM_ID && id <= PROFILE_ADD_MICROSOFT_ID)
-                    || (id >= PROFILE_REMOVE_ID && id < PROFILE_REMOVE_ID + 16))
+                    || (id >= PROFILE_REMOVE_ID && id < PROFILE_REMOVE_ID + 16)
+                    || id == PROFILE_PREVIOUS_PAGE_ID
+                    || id == PROFILE_NEXT_PAGE_ID)
                 iterator.remove();
         }
         profileSelectorEntries.clear();
@@ -614,10 +636,10 @@ public class AntagonHud {
         int height = ((Number) field(screen, "field_146295_m", "height")).intValue();
         float scale = MenuLayout.homeScale(width, height);
         int[] bounds = MenuLayout.profileSelector(width, height);
-        int rowY = bounds[1] + bounds[3] + Math.round(8 * scale);
+        int rowY = bounds[1] + bounds[3] + Math.round(29 * scale);
         int rowHeight = Math.max(1, Math.round(21 * scale));
-        int visibleRows =
-                Math.max(1, Math.min(16, (height - rowY - Math.round(62 * scale)) / rowHeight));
+        profileVisibleRows =
+                Math.max(1, Math.min(16, (height - rowY - Math.round(84 * scale)) / rowHeight));
         if (profileMicrosoftNames.contains(profileNickname))
             profileSelectorEntries.add(
                     new ProfileSelectorEntry(
@@ -636,9 +658,12 @@ public class AntagonHud {
             profileSelectorEntries.add(
                     new ProfileSelectorEntry("premium-select", nickname, "MS  " + nickname));
         }
-        int shown = Math.min(visibleRows, profileSelectorEntries.size());
+        int pages = MenuLayout.profilePageCount(profileSelectorEntries.size(), profileVisibleRows);
+        profilePage = MenuLayout.clampProfilePage(profilePage, profileSelectorEntries.size(), profileVisibleRows);
+        int pageStart = MenuLayout.profilePageStart(profilePage, profileVisibleRows);
+        int shown = Math.min(profileVisibleRows, profileSelectorEntries.size() - pageStart);
         for (int i = 0; i < shown; i++) {
-            ProfileSelectorEntry entry = profileSelectorEntries.get(i);
+            ProfileSelectorEntry entry = profileSelectorEntries.get(pageStart + i);
             int rowTop = rowY + i * rowHeight;
             buttons.add(
                     newProfileSelectorButton(
@@ -658,6 +683,25 @@ public class AntagonHud {
                             scale));
         }
         int addOfflineY = rowY + shown * rowHeight;
+        if (pages > 1) {
+            buttons.add(
+                    newProfileSelectorButton(
+                            PROFILE_PREVIOUS_PAGE_ID,
+                            bounds[0] + Math.round(4 * scale),
+                            addOfflineY,
+                            Math.round(30 * scale),
+                            "<",
+                            scale));
+            buttons.add(
+                    newProfileSelectorButton(
+                            PROFILE_NEXT_PAGE_ID,
+                            bounds[0] + bounds[2] - Math.round(34 * scale),
+                            addOfflineY,
+                            Math.round(30 * scale),
+                            ">",
+                            scale));
+            addOfflineY += rowHeight;
+        }
         buttons.add(
                 newProfileSelectorButton(
                         PROFILE_ADD_OFFLINE_ID,
@@ -728,12 +772,10 @@ public class AntagonHud {
                 else if (value.startsWith("@premium:")) {
                     String premium = value.substring("@premium:".length());
                     if (premium.matches("[A-Za-z0-9_]{3,16}")
-                            && !profileMicrosoftNames.contains(premium)
-                            && profileMicrosoftNames.size() < 8)
+                            && !profileMicrosoftNames.contains(premium))
                         profileMicrosoftNames.add(premium);
                 } else if (value.matches("[A-Za-z0-9_]{3,16}")
-                        && !profileOfflineNames.contains(value)
-                        && profileOfflineNames.size() < 8) profileOfflineNames.add(value);
+                        && !profileOfflineNames.contains(value)) profileOfflineNames.add(value);
             }
             profileSnapshotContent = String.join("\n", lines);
             profileSnapshotModified = modified;
@@ -776,7 +818,9 @@ public class AntagonHud {
                                 ? "logo"
                                 : id == FRIENDS_BUTTON_ID
                                         ? "chat"
-                            : id == ADMIN_BUTTON_ID ? "admin" : null;
+                                        : id == VOICE_BUTTON_ID
+                                                ? "voice"
+                                                : id == ADMIN_BUTTON_ID ? "admin" : null;
                 if (icon == null) continue;
                 int x = ((Number) field(button, "field_146128_h", "xPosition")).intValue();
                 int y = ((Number) field(button, "field_146129_i", "yPosition")).intValue();
@@ -791,10 +835,12 @@ public class AntagonHud {
                         && mouseY < y + 20)
                     tooltip =
                             id == SETTINGS_BUTTON_ID
-                                        ? "Ajustes de Primarix"
+                                    ? "Ajustes de Primarix"
                                     : id == FRIENDS_BUTTON_ID
                                             ? "Amigos y chat"
-                                            : "Admin";
+                                            : id == VOICE_BUTTON_ID
+                                                    ? "Salas de voz"
+                                                    : "Admin";
                 if (!menuLogoLogged) {
                     System.out.println("[PRIMARIX] Menu icons rendered");
                     menuLogoLogged = true;
@@ -831,17 +877,32 @@ public class AntagonHud {
                 String label =
                         id == ACCOUNTS_BUTTON_ID
                                 ? profileNickname
-                                : id >= PROFILE_ITEM_ID && id < PROFILE_ITEM_ID + profileSelectorEntries.size()
-                                        ? profileSelectorEntries.get(id - PROFILE_ITEM_ID).label
+                                : id >= PROFILE_ITEM_ID && id < PROFILE_ITEM_ID + 16
+                                        ? profileSelectorEntries
+                                                .get(
+                                                        MenuLayout.profilePageStart(
+                                                                        profilePage,
+                                                                        profileVisibleRows)
+                                                                + id
+                                                                - PROFILE_ITEM_ID)
+                                                .label
                                         : id == PROFILE_ADD_OFFLINE_ID
                                                 ? profileInputActive ? "ESCRIBE TU NICK..." : "+ NICK OFFLINE"
                                                 : id == PROFILE_USE_OFFLINE_ID
                                                         ? "USAR"
                                                         : id == PROFILE_ADD_MICROSOFT_ID
                                                                 ? "+ CUENTA MICROSOFT"
-                                : id == 5
-                                        ? "ES"
-                                        : (String) field(button, "field_146126_j", "displayString");
+                                                                : id == PROFILE_PREVIOUS_PAGE_ID
+                                                                        ? "<"
+                                                                        : id == PROFILE_NEXT_PAGE_ID
+                                                                                ? ">"
+                                                                                : id == 5
+                                                                                        ? "ES"
+                                                                                        : (String)
+                                                                                                field(
+                                                                                                        button,
+                                                                                                        "field_146126_j",
+                                                                                                        "displayString");
                 boolean hover = mouseX >= x && mouseX < x + buttonWidth && mouseY >= y && mouseY < y + buttonHeight;
                 drawClientMenuButton(id, x, y, buttonWidth, buttonHeight, label, hover);
             }
@@ -973,23 +1034,32 @@ public class AntagonHud {
         int margin = Math.round(8 * scale);
         int headerHeight = Math.round(21 * scale);
         int rowHeight = Math.max(1, Math.round(21 * scale));
-        int rowY = bounds[1] + bounds[3] + margin;
-        int visibleRows =
-                Math.max(1, Math.min(16, (screenHeight - rowY - Math.round(62 * scale)) / rowHeight));
-        int shown = Math.min(visibleRows, profileSelectorEntries.size());
+        int panelY = bounds[1] + bounds[3] + margin;
+        int rowY = panelY + headerHeight;
+        int pages = MenuLayout.profilePageCount(profileSelectorEntries.size(), profileVisibleRows);
+        int shown =
+                Math.min(
+                        profileVisibleRows,
+                        profileSelectorEntries.size()
+                                - MenuLayout.profilePageStart(profilePage, profileVisibleRows));
         int height =
-                Math.round((32 + shown * 21 + (profileInputActive ? 70 : 42)) * scale);
-        rect(bounds[0] + margin / 2, rowY + margin / 2, bounds[2], height, 0xA0000000);
-        rect(bounds[0], rowY, bounds[2], height, 0xF4191C23);
-        outline(bounds[0], rowY, bounds[2], height, 0xFFD2D4DA);
+                Math.round(
+                        (32
+                                        + shown * 21
+                                        + (pages > 1 ? 21 : 0)
+                                        + (profileInputActive ? 70 : 42))
+                                * scale);
+        rect(bounds[0] + margin / 2, panelY + margin / 2, bounds[2], height, 0xA0000000);
+        rect(bounds[0], panelY, bounds[2], height, 0xF4191C23);
+        outline(bounds[0], panelY, bounds[2], height, 0xFFD2D4DA);
         scaledMenuText(
-                "CUENTAS GUARDADAS",
+                pages > 1 ? "CUENTAS " + (profilePage + 1) + "/" + pages : "CUENTAS GUARDADAS",
                 bounds[0] + margin,
-                rowY + Math.round(7 * scale),
+                panelY + Math.round(7 * scale),
                 0xFFBFC4CE,
                 scale);
         if (profileInputActive) {
-            int inputY = rowY + headerHeight + shown * rowHeight;
+            int inputY = rowY + shown * rowHeight + (pages > 1 ? rowHeight : 0);
             rect(bounds[0] + margin / 2, inputY, bounds[2] - Math.round(68 * scale),
                     Math.round(18 * scale), 0xFF101217);
             outline(bounds[0] + margin / 2, inputY, bounds[2] - Math.round(68 * scale),
@@ -1009,7 +1079,7 @@ public class AntagonHud {
             scaledMenuText(
                     fit(profileNotice, (bounds[2] - Math.round(12 * scale)) / scale),
                     bounds[0] + Math.round(6 * scale),
-                    rowY + height - Math.round(14 * scale),
+                    panelY + height - Math.round(14 * scale),
                     0xFFFFD34A,
                     scale);
     }
@@ -1161,7 +1231,7 @@ public class AntagonHud {
         outline(x + 1, y + 1, width - 2, height - 2, hover ? 0x99000000 | accentColor : 0x38FFFFFF);
         rect(x + 1, y + 1, width - 2, 1, 0x38FFFFFF);
         if (label == null || label.isEmpty()) return;
-        if (id < PROFILE_ITEM_ID || id >= PROFILE_ITEM_ID + profileSelectorEntries.size())
+        if (id < PROFILE_ITEM_ID || id >= PROFILE_ITEM_ID + 16)
             label = label.toUpperCase(Locale.ROOT);
         float centerX = x + width / 2f;
         float scale = Math.min(1f, (width - 20f) / Math.max(1f, font.width(label)));
@@ -1215,6 +1285,7 @@ public class AntagonHud {
                 if (id == ACCOUNTS_BUTTON_ID) {
                     refreshProfileSnapshot();
                     profileSelectorOpen = !profileSelectorOpen;
+                    profilePage = 0;
                     profileInputActive = false;
                     profileInput = "";
                     refreshProfileSelectorButtons(screen);
@@ -1244,9 +1315,29 @@ public class AntagonHud {
                     event.setCanceled(true);
                     return;
                 }
+                if (id == PROFILE_PREVIOUS_PAGE_ID || id == PROFILE_NEXT_PAGE_ID) {
+                    int pages =
+                            MenuLayout.profilePageCount(
+                                    profileSelectorEntries.size(), profileVisibleRows);
+                    profilePage += id == PROFILE_PREVIOUS_PAGE_ID ? -1 : 1;
+                    profilePage =
+                            MenuLayout.clampProfilePage(
+                                    profilePage, profileSelectorEntries.size(), profileVisibleRows);
+                    if (pages > 1) refreshProfileSelectorButtons(screen);
+                    event.setCanceled(true);
+                    return;
+                }
                 if (id >= PROFILE_ITEM_ID
-                        && id < PROFILE_ITEM_ID + profileSelectorEntries.size()) {
-                    ProfileSelectorEntry entry = profileSelectorEntries.get(id - PROFILE_ITEM_ID);
+                        && id < PROFILE_ITEM_ID + 16
+                        && MenuLayout.profilePageStart(profilePage, profileVisibleRows)
+                                        + id
+                                        - PROFILE_ITEM_ID
+                                < profileSelectorEntries.size()) {
+                    ProfileSelectorEntry entry =
+                            profileSelectorEntries.get(
+                                    MenuLayout.profilePageStart(profilePage, profileVisibleRows)
+                                            + id
+                                            - PROFILE_ITEM_ID);
                     sendProfileSelectorRequest(entry.command, entry.nickname);
                     if (entry.command.equals("select") || entry.command.equals("premium-select"))
                         {
@@ -1257,8 +1348,11 @@ public class AntagonHud {
                     return;
                 }
                 if (id >= PROFILE_REMOVE_ID
-                        && id < PROFILE_REMOVE_ID + profileSelectorEntries.size()) {
-                    int index = id - PROFILE_REMOVE_ID;
+                        && id < PROFILE_REMOVE_ID + 16) {
+                    int index =
+                            MenuLayout.profilePageStart(profilePage, profileVisibleRows)
+                                    + id
+                                    - PROFILE_REMOVE_ID;
                     if (index >= profileSelectorEntries.size()) return;
                     ProfileSelectorEntry entry = profileSelectorEntries.get(index);
                     sendProfileSelectorRequest(
@@ -1269,7 +1363,8 @@ public class AntagonHud {
                     return;
                 }
             }
-            if (id == MENU_BUTTON_ID || id == SETTINGS_BUTTON_ID) openMenu(screen);
+            if (id == VOICE_BUTTON_ID) requestLauncherView("voice");
+            else if (id == MENU_BUTTON_ID || id == SETTINGS_BUTTON_ID) openMenu(screen);
             else if (id == 6 && screen.getClass().getName().equals("net.minecraft.client.gui.GuiMainMenu"))
                 openMenu(screen);
             else if (id == ACCOUNTS_BUTTON_ID) {

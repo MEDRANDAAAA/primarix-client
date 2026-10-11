@@ -112,6 +112,18 @@ final class MenuLayout {
         return Math.max(0, Math.min(scroll, maxScroll(count, height)));
     }
 
+    static int profilePageCount(int count, int rows) {
+        return Math.max(1, (count + rows - 1) / rows);
+    }
+
+    static int clampProfilePage(int page, int count, int rows) {
+        return Math.max(0, Math.min(page, profilePageCount(count, rows) - 1));
+    }
+
+    static int profilePageStart(int page, int rows) {
+        return page * rows;
+    }
+
     static float[] card(int index, float x, float y, float scroll) {
         float width = (WIDTH - PADDING * 2 - 16) / 3f;
         return new float[] {
