@@ -120,6 +120,15 @@ public final class CoreTest {
         check(MenuLayout.profilePageCount(9, 8) == 2);
         check(MenuLayout.profilePageStart(1, 8) == 8);
         check(MenuLayout.clampProfilePage(4, 9, 8) == 1);
+        check(MenuLayout.profileScrollOffset(-1, 12, 6) == 0);
+        check(MenuLayout.profileScrollOffset(4, 12, 6) == 4);
+        check(MenuLayout.profileScrollOffset(99, 12, 6) == 6);
+        check(MenuLayout.profileScrollOffset(99, 4, 6) == 0);
+        check(MenuLayout.profileScrollbarThumbSize(150, 12, 6, 25) == 75);
+        check(MenuLayout.profileScrollbarThumbOffset(75, 0, 12, 6) == 0);
+        check(MenuLayout.profileScrollbarThumbOffset(75, 6, 12, 6) == 75);
+        check(MenuLayout.profileScrollOffsetFromThumb(75, 75, 12, 6) == 6);
+        check(MenuLayout.profileScrollOffsetFromThumb(-5, 75, 12, 6) == 0);
         int[] profileSelector = MenuLayout.profileSelector(854, 480);
         check(profileSelector[0] + profileSelector[2] + 8 == 854);
         check(profileSelector[1] == 8 && profileSelector[3] == 30);

@@ -70,8 +70,7 @@ public class AntagonHud {
             PROFILE_USE_OFFLINE_ID = 0xA731,
             PROFILE_ADD_MICROSOFT_ID = 0xA732,
             PROFILE_REMOVE_ID = 0xA740,
-            PROFILE_PREVIOUS_PAGE_ID = 0xA750,
-            PROFILE_NEXT_PAGE_ID = 0xA751;
+            PROFILE_CANCEL_INPUT_ID = 0xA752;
     private static final File UI_REQUEST = new File("antagon-ui-request.txt");
     private static final File PROFILE_REQUEST = new File("antagon-profile-request.txt");
     private static final File PROFILE_SNAPSHOT = new File("antagon-accounts.txt");
@@ -100,8 +99,10 @@ public class AntagonHud {
     private final List<ProfileSelectorEntry> profileSelectorEntries =
             new ArrayList<ProfileSelectorEntry>();
     private boolean profileSelectorOpen = false, profileInputActive = false;
-    private int profilePage = 0, profileVisibleRows = 16;
+    private boolean profileScrollbarDragging = false;
+    private int profileScrollOffset = 0, profileVisibleRows = 6;
     private String profileInput = "";
+    private Object profileTextField;
     private volatile Object profileSkinTexture;
     private String profileSkinKey = "";
     private final Map<String, float[]> bounds = new HashMap<String, float[]>();
@@ -431,25 +432,190 @@ public class AntagonHud {
                 || !screen.getClass().getName().equals("net.minecraft.client.gui.GuiMainMenu"))
             return false;
         if (key == Keyboard.KEY_ESCAPE) {
-            profileInputActive = false;
-            profileInput = "";
+            cancelProfileInput(screen);
         } else if (key == Keyboard.KEY_RETURN || key == Keyboard.KEY_NUMPADENTER) {
-            if (profileInput.matches("[A-Za-z0-9_]{3,16}"))
+            profileInput =
+                    profileTextField == null
+                            ? ""
+                            : (String)
+                                    call(
+                                            profileTextField,
+                                            new String[] {"func_146179_b", "getText"});
+            if (profileInput.matches("[A-Za-z0-9_]{3,16}")) {
                 sendProfileSelectorRequest("add", profileInput);
-            else profileNotice = "Usa de 3 a 16 letras, numeros o _.";
-            profileInputActive = false;
-            profileInput = "";
+                profileInputActive = false;
+                profileInput = "";
+                profileTextField = null;
+            } else {
+                profileNotice = "Usa de 3 a 16 letras, numeros o _.";
+            }
         } else if (key == Keyboard.KEY_BACK) {
-            if (!profileInput.isEmpty())
-                profileInput = profileInput.substring(0, profileInput.length() - 1);
-        } else if ((character >= 'A' && character <= 'Z')
-                || (character >= 'a' && character <= 'z')
-                || (character >= '0' && character <= '9')
-                || character == '_') {
-            if (profileInput.length() < 16) profileInput += character;
+            if (profileTextField != null)
+                call(profileTextField, new String[] {"func_146201_a", "textboxKeyTyped"}, character, key);
+        } else {
+            if (profileTextField != null)
+                call(profileTextField, new String[] {"func_146201_a", "textboxKeyTyped"}, character, key);
+        }
+        profileInput =
+                sanitizeProfileNickname(
+                        profileTextField == null
+                                ? ""
+                                : (String)
+                                        call(
+                                                profileTextField,
+                                                new String[] {"func_146179_b", "getText"}));
+        if (profileTextField != null
+                && !profileInput.equals(
+                        call(profileTextField, new String[] {"func_146179_b", "getText"}))) {
+            call(profileTextField, new String[] {"func_146180_a", "setText"}, profileInput);
+            call(profileTextField, new String[] {"func_146202_e", "setCursorPositionEnd"});
         }
         refreshProfileSelectorButtons(screen);
         return true;
+    }
+
+    private static String sanitizeProfileNickname(String value) {
+        return value == null ? "" : value.replaceAll("[^A-Za-z0-9_]", "");
+    }
+
+    private void cancelProfileInput(Object screen) throws Exception {
+        profileInputActive = false;
+        profileInput = "";
+        profileTextField = null;
+        refreshProfileSelectorButtons(screen);
+    }
+
+    private Object createProfileTextField(int x, int y, int width, int height) throws Exception {
+        Object fontRenderer = field(mc, "field_71466_p", "fontRendererObj");
+        Class<?> type = Class.forName("net.minecraft.client.gui.GuiTextField");
+        for (Constructor<?> constructor : type.getConstructors()) {
+            Class<?>[] parameters = constructor.getParameterTypes();
+            if (parameters.length == 6
+                    && parameters[0] == int.class
+                    && parameters[1].isInstance(fontRenderer)
+                    && parameters[2] == int.class
+                    && parameters[3] == int.class
+                    && parameters[4] == int.class
+                    && parameters[5] == int.class)
+                return constructor.newInstance(0, fontRenderer, x, y, width, height);
+        }
+        throw new NoSuchMethodException("Minecraft GuiTextField constructor was not found");
+    }
+
+    @SubscribeEvent
+    public void profileSelectorMouse(GuiScreenEvent.MouseInputEvent.Pre event) {
+        try {
+            Object screen = field(event, "gui");
+            if (!profileSelectorOpen
+                    || screen == null
+                    || !screen.getClass().getName().equals("net.minecraft.client.gui.GuiMainMenu"))
+                return;
+            int width = ((Number) field(screen, "field_146294_l", "width")).intValue();
+            int height = ((Number) field(screen, "field_146295_m", "height")).intValue();
+            int displayWidth = ((Number) field(mc, "field_71443_c", "displayWidth")).intValue();
+            int displayHeight = ((Number) field(mc, "field_71440_d", "displayHeight")).intValue();
+            int mouseX = Mouse.getEventX() * width / Math.max(1, displayWidth);
+            int mouseY = height - Mouse.getEventY() * height / Math.max(1, displayHeight) - 1;
+            float scale = MenuLayout.homeScale(width, height);
+            int[] bounds = MenuLayout.profileSelector(width, height);
+            int rowY = bounds[1] + bounds[3] + Math.round(29 * scale);
+            int rowHeight = Math.max(1, Math.round(25 * scale));
+            int inset = Math.max(2, Math.round(7 * scale));
+            int contentWidth = bounds[2] - inset * 2;
+            int scrollbarWidth = Math.max(3, Math.round(5 * scale));
+            int scrollbarGap = Math.max(2, Math.round(3 * scale));
+            int listWidth = contentWidth - scrollbarWidth - scrollbarGap;
+            int trackX = bounds[0] + inset + listWidth + scrollbarGap;
+            int trackY = rowY;
+            int trackHeight = profileVisibleRows * rowHeight;
+            int maxOffset =
+                    Math.max(0, profileSelectorEntries.size() - profileVisibleRows);
+            int wheel = Mouse.getEventDWheel();
+            boolean insideList =
+                    mouseX >= bounds[0] + inset
+                            && mouseX < trackX + scrollbarWidth
+                            && mouseY >= trackY
+                            && mouseY < trackY + trackHeight;
+            if (wheel != 0 && maxOffset > 0 && insideList) {
+                int steps = Math.max(1, Math.abs(wheel) / 120);
+                setProfileScrollOffset(
+                        profileScrollOffset + (wheel < 0 ? steps : -steps), screen);
+                event.setCanceled(true);
+                return;
+            }
+            int button = Mouse.getEventButton();
+            boolean pressed = Mouse.getEventButtonState();
+            if (button == 0 && pressed && maxOffset > 0
+                    && mouseX >= trackX
+                    && mouseX < trackX + scrollbarWidth
+                    && mouseY >= trackY
+                    && mouseY < trackY + trackHeight) {
+                profileScrollbarDragging = true;
+                dragProfileScrollbar(mouseY, trackY, trackHeight, rowHeight, screen);
+                event.setCanceled(true);
+                return;
+            }
+            if (button == 0 && !pressed) profileScrollbarDragging = false;
+            if (profileScrollbarDragging && Mouse.isButtonDown(0) && maxOffset > 0) {
+                dragProfileScrollbar(mouseY, trackY, trackHeight, rowHeight, screen);
+                event.setCanceled(true);
+                return;
+            }
+            if (profileInputActive
+                    && profileTextField != null
+                    && button >= 0
+                    && pressed) {
+                call(
+                        profileTextField,
+                        new String[] {"func_146192_a", "mouseClicked"},
+                        mouseX,
+                        mouseY,
+                        button);
+                profileInput =
+                        (String)
+                                call(
+                                        profileTextField,
+                                        new String[] {"func_146179_b", "getText"});
+            }
+        } catch (Exception error) {
+            report(error);
+        }
+    }
+
+    private void setProfileScrollOffset(int offset, Object screen) throws Exception {
+        profileScrollOffset =
+                MenuLayout.profileScrollOffset(
+                        offset, profileSelectorEntries.size(), profileVisibleRows);
+        refreshProfileSelectorButtons(screen);
+    }
+
+    private void dragProfileScrollbar(
+            int mouseY,
+            int trackY,
+            int trackHeight,
+            int rowHeight,
+            Object screen)
+            throws Exception {
+        int thumbHeight =
+                MenuLayout.profileScrollbarThumbSize(
+                        trackHeight,
+                        profileSelectorEntries.size(),
+                        profileVisibleRows,
+                        rowHeight);
+        int thumbTravel = Math.max(1, trackHeight - thumbHeight);
+        int thumbTop =
+                Math.max(
+                        trackY,
+                        Math.min(
+                                trackY + thumbTravel,
+                                mouseY - thumbHeight / 2));
+        int offset =
+                MenuLayout.profileScrollOffsetFromThumb(
+                        thumbTop - trackY,
+                        thumbTravel,
+                        profileSelectorEntries.size(),
+                        profileVisibleRows);
+        setProfileScrollOffset(offset, screen);
     }
 
     private void openMenu() {
@@ -625,9 +791,7 @@ public class AntagonHud {
         for (Iterator<Object> iterator = buttons.iterator(); iterator.hasNext(); ) {
             int id = ((Number) field(iterator.next(), "field_146127_k", "id")).intValue();
             if ((id >= PROFILE_ITEM_ID && id <= PROFILE_ADD_MICROSOFT_ID)
-                    || (id >= PROFILE_REMOVE_ID && id < PROFILE_REMOVE_ID + 16)
-                    || id == PROFILE_PREVIOUS_PAGE_ID
-                    || id == PROFILE_NEXT_PAGE_ID)
+                    || (id >= PROFILE_REMOVE_ID && id < PROFILE_REMOVE_ID + 16))
                 iterator.remove();
         }
         profileSelectorEntries.clear();
@@ -637,9 +801,19 @@ public class AntagonHud {
         float scale = MenuLayout.homeScale(width, height);
         int[] bounds = MenuLayout.profileSelector(width, height);
         int rowY = bounds[1] + bounds[3] + Math.round(29 * scale);
-        int rowHeight = Math.max(1, Math.round(21 * scale));
+        int rowHeight = Math.max(1, Math.round(25 * scale));
+        int inset = Math.max(2, Math.round(7 * scale));
+        int gap = Math.max(1, Math.round(4 * scale));
+        int contentWidth = bounds[2] - inset * 2;
         profileVisibleRows =
-                Math.max(1, Math.min(16, (height - rowY - Math.round(84 * scale)) / rowHeight));
+                Math.max(
+                        1,
+                        Math.min(
+                                6,
+                                (height
+                                                - rowY
+                                                - Math.round((profileInputActive ? 130 : 94) * scale))
+                                        / rowHeight));
         if (profileMicrosoftNames.contains(profileNickname))
             profileSelectorEntries.add(
                     new ProfileSelectorEntry(
@@ -658,74 +832,95 @@ public class AntagonHud {
             profileSelectorEntries.add(
                     new ProfileSelectorEntry("premium-select", nickname, "MS  " + nickname));
         }
-        int pages = MenuLayout.profilePageCount(profileSelectorEntries.size(), profileVisibleRows);
-        profilePage = MenuLayout.clampProfilePage(profilePage, profileSelectorEntries.size(), profileVisibleRows);
-        int pageStart = MenuLayout.profilePageStart(profilePage, profileVisibleRows);
-        int shown = Math.min(profileVisibleRows, profileSelectorEntries.size() - pageStart);
+        profileScrollOffset =
+                MenuLayout.profileScrollOffset(
+                        profileScrollOffset,
+                        profileSelectorEntries.size(),
+                        profileVisibleRows);
+        int shown =
+                Math.min(
+                        profileVisibleRows,
+                        Math.max(0, profileSelectorEntries.size() - profileScrollOffset));
+        int scrollbarWidth = Math.max(3, Math.round(5 * scale));
+        int scrollbarGap = Math.max(2, Math.round(3 * scale));
+        int listWidth = contentWidth - scrollbarWidth - scrollbarGap;
         for (int i = 0; i < shown; i++) {
-            ProfileSelectorEntry entry = profileSelectorEntries.get(pageStart + i);
+            ProfileSelectorEntry entry = profileSelectorEntries.get(profileScrollOffset + i);
             int rowTop = rowY + i * rowHeight;
+            int removeWidth = Math.max(20, Math.round(24 * scale));
+            int rowWidth = listWidth - removeWidth - gap;
             buttons.add(
-                    newProfileSelectorButton(
+                    newProfileRowButton(
                             PROFILE_ITEM_ID + i,
-                            bounds[0] + Math.round(4 * scale),
+                            bounds[0] + inset,
                             rowTop,
-                            bounds[2] - Math.round(38 * scale),
+                            rowWidth,
                             entry.label,
                             scale));
             buttons.add(
-                    newProfileSelectorButton(
+                    newProfileRowButton(
                             PROFILE_REMOVE_ID + i,
-                            bounds[0] + bounds[2] - Math.round(34 * scale),
+                            bounds[0] + inset + rowWidth + gap,
                             rowTop,
-                            Math.round(30 * scale),
-                            "X",
+                            removeWidth,
+                            "\u00d7",
                             scale));
         }
         int addOfflineY = rowY + shown * rowHeight;
-        if (pages > 1) {
-            buttons.add(
-                    newProfileSelectorButton(
-                            PROFILE_PREVIOUS_PAGE_ID,
-                            bounds[0] + Math.round(4 * scale),
-                            addOfflineY,
-                            Math.round(30 * scale),
-                            "<",
-                            scale));
-            buttons.add(
-                    newProfileSelectorButton(
-                            PROFILE_NEXT_PAGE_ID,
-                            bounds[0] + bounds[2] - Math.round(34 * scale),
-                            addOfflineY,
-                            Math.round(30 * scale),
-                            ">",
-                            scale));
-            addOfflineY += rowHeight;
-        }
-        buttons.add(
-                newProfileSelectorButton(
-                        PROFILE_ADD_OFFLINE_ID,
-                        bounds[0] + Math.round(4 * scale),
-                        addOfflineY,
-                        bounds[2] - Math.round(8 * scale),
-                        profileInputActive ? "ESCRIBE TU NICK..." : "+ NICK OFFLINE",
-                        scale));
-        if (profileInputActive)
+        int buttonHeight = Math.max(1, Math.round(20 * scale));
+        int saveWidth = Math.max(40, Math.round(58 * scale));
+        if (profileInputActive) {
+            int inputX = bounds[0] + inset;
+            int inputY = addOfflineY + Math.max(1, (rowHeight - buttonHeight) / 2);
+            int inputWidth = contentWidth - saveWidth - gap;
+            if (profileTextField == null) {
+                profileTextField = createProfileTextField(inputX, inputY, inputWidth, buttonHeight);
+                call(profileTextField, new String[] {"func_146203_f", "setMaxStringLength"}, 16);
+                call(profileTextField, new String[] {"func_146185_a", "setEnableBackgroundDrawing"}, false);
+                call(profileTextField, new String[] {"func_146193_g", "setTextColor"}, WHITE);
+                call(profileTextField, new String[] {"func_146180_a", "setText"}, profileInput);
+                call(profileTextField, new String[] {"func_146195_b", "setFocused"}, true);
+                call(profileTextField, new String[] {"func_146202_e", "setCursorPositionEnd"});
+            } else {
+                setField(profileTextField, inputX, "field_146209_f", "xPosition");
+                setField(profileTextField, inputY, "field_146210_g", "yPosition");
+                setField(profileTextField, inputWidth, "field_146218_h", "width");
+                setField(profileTextField, buttonHeight, "field_146219_i", "height");
+            }
             buttons.add(
                     newProfileSelectorButton(
                             PROFILE_USE_OFFLINE_ID,
-                            bounds[0] + bounds[2] - Math.round(58 * scale),
-                            addOfflineY + rowHeight,
-                            Math.round(54 * scale),
-                            "USAR",
+                            inputX + inputWidth + gap,
+                            inputY,
+                            saveWidth,
+                            "GUARDAR",
                             scale));
+            buttons.add(
+                    newProfileSelectorButton(
+                            PROFILE_CANCEL_INPUT_ID,
+                            bounds[0] + inset,
+                            addOfflineY + rowHeight,
+                            contentWidth,
+                            "CANCELAR",
+                            scale));
+        } else {
+            profileTextField = null;
+            buttons.add(
+                    newProfileSelectorButton(
+                            PROFILE_ADD_OFFLINE_ID,
+                            bounds[0] + inset,
+                            addOfflineY,
+                            contentWidth,
+                            "+ A\u00d1ADIR NICK OFFLINE",
+                            scale));
+        }
         buttons.add(
                 newProfileSelectorButton(
                         PROFILE_ADD_MICROSOFT_ID,
-                        bounds[0] + Math.round(4 * scale),
-                        addOfflineY + Math.round((profileInputActive ? 42 : 21) * scale),
-                        bounds[2] - Math.round(8 * scale),
-                        "+ CUENTA MICROSOFT",
+                        bounds[0] + inset,
+                        addOfflineY + rowHeight * (profileInputActive ? 2 : 1),
+                        contentWidth,
+                        "+ A\u00d1ADIR CUENTA MICROSOFT",
                         scale));
     }
 
@@ -733,6 +928,13 @@ public class AntagonHud {
             throws Exception {
         Object button = newButton(id, x, y, width, label);
         setField(button, Math.max(1, Math.round(20 * scale)), "field_146121_g", "height");
+        return button;
+    }
+
+    private Object newProfileRowButton(int id, int x, int y, int width, String label, float scale)
+            throws Exception {
+        Object button = newProfileSelectorButton(id, x, y, width, label, scale);
+        setField(button, Math.max(1, Math.round(23 * scale)), "field_146121_g", "height");
         return button;
     }
 
@@ -880,9 +1082,7 @@ public class AntagonHud {
                                 : id >= PROFILE_ITEM_ID && id < PROFILE_ITEM_ID + 16
                                         ? profileSelectorEntries
                                                 .get(
-                                                        MenuLayout.profilePageStart(
-                                                                        profilePage,
-                                                                        profileVisibleRows)
+                                                        profileScrollOffset
                                                                 + id
                                                                 - PROFILE_ITEM_ID)
                                                 .label
@@ -892,11 +1092,7 @@ public class AntagonHud {
                                                         ? "USAR"
                                                         : id == PROFILE_ADD_MICROSOFT_ID
                                                                 ? "+ CUENTA MICROSOFT"
-                                                                : id == PROFILE_PREVIOUS_PAGE_ID
-                                                                        ? "<"
-                                                                        : id == PROFILE_NEXT_PAGE_ID
-                                                                                ? ">"
-                                                                                : id == 5
+                                                                : id == 5
                                                                                         ? "ES"
                                                                                         : (String)
                                                                                                 field(
@@ -1027,53 +1223,90 @@ public class AntagonHud {
         menuBackgroundStartedAt = System.currentTimeMillis();
     }
 
-    private void drawProfileSelectorDropdown(int screenWidth, int screenHeight) {
+    private void drawProfileSelectorDropdown(int screenWidth, int screenHeight) throws Exception {
         if (!profileSelectorOpen) return;
         float scale = MenuLayout.homeScale(screenWidth, screenHeight);
         int[] bounds = MenuLayout.profileSelector(screenWidth, screenHeight);
         int margin = Math.round(8 * scale);
-        int headerHeight = Math.round(21 * scale);
-        int rowHeight = Math.max(1, Math.round(21 * scale));
+        int rowHeight = Math.max(1, Math.round(25 * scale));
         int panelY = bounds[1] + bounds[3] + margin;
-        int rowY = panelY + headerHeight;
-        int pages = MenuLayout.profilePageCount(profileSelectorEntries.size(), profileVisibleRows);
+        int rowY = bounds[1] + bounds[3] + Math.round(29 * scale);
         int shown =
                 Math.min(
                         profileVisibleRows,
-                        profileSelectorEntries.size()
-                                - MenuLayout.profilePageStart(profilePage, profileVisibleRows));
+                        Math.max(0, profileSelectorEntries.size() - profileScrollOffset));
         int height =
                 Math.round(
-                        (32
-                                        + shown * 21
-                                        + (pages > 1 ? 21 : 0)
-                                        + (profileInputActive ? 70 : 42))
+                        (30
+                                        + shown * 25
+                                        + (profileInputActive ? 75 : 50))
                                 * scale);
         rect(bounds[0] + margin / 2, panelY + margin / 2, bounds[2], height, 0xA0000000);
         rect(bounds[0], panelY, bounds[2], height, 0xF4191C23);
-        outline(bounds[0], panelY, bounds[2], height, 0xFFD2D4DA);
+        outline(bounds[0], panelY, bounds[2], height, 0xFF55505C);
+        rect(bounds[0] + 1, panelY + 1, bounds[2] - 2, Math.max(1, Math.round(2 * scale)), accent());
         scaledMenuText(
-                pages > 1 ? "CUENTAS " + (profilePage + 1) + "/" + pages : "CUENTAS GUARDADAS",
+                "PERFILES GUARDADOS",
                 bounds[0] + margin,
-                panelY + Math.round(7 * scale),
-                0xFFBFC4CE,
+                panelY + Math.round(6 * scale),
+                WHITE,
                 scale);
+        if (profileSelectorEntries.size() > profileVisibleRows) {
+            int inset = Math.max(2, Math.round(7 * scale));
+            int contentWidth = bounds[2] - inset * 2;
+            int scrollbarWidth = Math.max(3, Math.round(5 * scale));
+            int scrollbarGap = Math.max(2, Math.round(3 * scale));
+            int listWidth = contentWidth - scrollbarWidth - scrollbarGap;
+            int trackX = bounds[0] + inset + listWidth + scrollbarGap;
+            int trackHeight = profileVisibleRows * rowHeight;
+            int thumbHeight =
+                    MenuLayout.profileScrollbarThumbSize(
+                            trackHeight,
+                            profileSelectorEntries.size(),
+                            profileVisibleRows,
+                            rowHeight);
+            int thumbTravel = Math.max(0, trackHeight - thumbHeight);
+            int thumbY =
+                    rowY
+                            + MenuLayout.profileScrollbarThumbOffset(
+                                    thumbTravel,
+                                    profileScrollOffset,
+                                    profileSelectorEntries.size(),
+                                    profileVisibleRows);
+            rect(trackX, rowY, scrollbarWidth, trackHeight, 0xFF121117);
+            rect(
+                    trackX,
+                    thumbY,
+                    scrollbarWidth,
+                    thumbHeight,
+                    profileScrollbarDragging ? 0xFFFFBDD0 : 0xFFB45B79);
+        }
         if (profileInputActive) {
-            int inputY = rowY + shown * rowHeight + (pages > 1 ? rowHeight : 0);
-            rect(bounds[0] + margin / 2, inputY, bounds[2] - Math.round(68 * scale),
-                    Math.round(18 * scale), 0xFF101217);
-            outline(bounds[0] + margin / 2, inputY, bounds[2] - Math.round(68 * scale),
-                    Math.round(18 * scale), 0xFF777B85);
-            String visibleInput =
-                    profileInput + (System.currentTimeMillis() / 500 % 2 == 0 ? "_" : "");
-            scaledMenuText(
-                    visibleInput.isEmpty()
-                            ? "Escribe un nick..."
-                            : fit(visibleInput, (bounds[2] - Math.round(78 * scale)) / scale),
-                    bounds[0] + Math.round(10 * scale),
-                    inputY + Math.round(2 * scale),
-                    profileInput.isEmpty() ? GRAY : WHITE,
-                    scale);
+            int inputY = rowY + shown * rowHeight;
+            int inset = Math.max(2, Math.round(7 * scale));
+            int contentWidth = bounds[2] - inset * 2;
+            int saveWidth = Math.max(40, Math.round(58 * scale));
+            int gap = Math.max(1, Math.round(4 * scale));
+            int fieldX = bounds[0] + inset;
+            int fieldY = inputY + Math.max(1, (rowHeight - Math.round(20 * scale)) / 2);
+            int fieldWidth = contentWidth - saveWidth - gap;
+            int fieldHeight = Math.max(1, Math.round(20 * scale));
+            rect(fieldX, fieldY, fieldWidth, fieldHeight, 0xFF101217);
+            outline(fieldX, fieldY, fieldWidth, fieldHeight, 0xFFFF2F61);
+            if (profileTextField != null) {
+                if (((String)
+                                        call(
+                                                profileTextField,
+                                                new String[] {"func_146179_b", "getText"}))
+                                .isEmpty())
+                    scaledMenuText(
+                            "Nick de 3 a 16 caracteres",
+                            fieldX + Math.round(5 * scale),
+                            fieldY + Math.round(5 * scale),
+                            GRAY,
+                            scale);
+                call(profileTextField, new String[] {"func_146194_f", "drawTextBox"});
+            }
         }
         if (!profileNotice.isEmpty())
             scaledMenuText(
@@ -1115,18 +1348,18 @@ public class AntagonHud {
                 bounds[1] + Math.round(3 * scale),
                 Math.round(24 * scale));
         String shownName = fit(profileNickname, (bounds[2] - Math.round(54 * scale)) / scale);
+        int nameX = bounds[0] + Math.round(34 * scale);
         scaledMenuText(
                 shownName,
-                bounds[0] + Math.round(34 * scale),
-                bounds[1] + Math.round(6 * scale),
+                nameX,
+                bounds[1] + Math.round(10 * scale),
                 WHITE,
                 scale);
-        scaledMenuText(
-                profileMode.equals("microsoft") ? "MICROSOFT" : "OFFLINE",
-                bounds[0] + Math.round(34 * scale),
-                bounds[1] + Math.round(18 * scale),
-                profileMode.equals("microsoft") ? 0xFF8CCBFF : 0xFFB7BAC2,
-                scale);
+        if (profileMode.equals("microsoft")) {
+            int markSize = Math.max(6, Math.round(8 * scale));
+            int markX = nameX + Math.round(font.width(shownName) * scale) + Math.round(4 * scale);
+            drawMicrosoftMark(markX, bounds[1] + (bounds[3] - markSize) / 2, markSize);
+        }
         scaledMenuText(
                 profileSelectorOpen ? "\u25b2" : "\u25bc",
                 bounds[0] + bounds[2] - Math.round(15 * scale),
@@ -1219,6 +1452,35 @@ public class AntagonHud {
             int id, int x, int y, int width, int height, String label, boolean hover)
             throws Exception {
         if (id == ACCOUNTS_BUTTON_ID) return;
+        if (id >= PROFILE_ITEM_ID && id < PROFILE_ITEM_ID + 16) {
+            drawProfileRow(profileScrollOffset + id - PROFILE_ITEM_ID, x, y, width, height, hover);
+            return;
+        }
+        if (id >= PROFILE_REMOVE_ID && id < PROFILE_REMOVE_ID + 16) {
+            rect(x, y, width, height, hover ? 0xFF4A252D : 0xFF2B2028);
+            outline(x, y, width, height, hover ? 0xFFFF6B78 : 0xFF59434D);
+            drawCenteredMenuText("\u00d7", x + width / 2f, y, height, hover ? 0xFFFF8C96 : 0xFFD8A1A8);
+            return;
+        }
+        if (id == PROFILE_USE_OFFLINE_ID) {
+            rect(x, y, width, height, hover ? 0xFFFFBDD0 : 0xFFF49CAF);
+            outline(x, y, width, height, 0xFFFFDDE7);
+            drawCenteredMenuText(label, x + width / 2f, y, height, 0xFF28161D);
+            return;
+        }
+        if (id == PROFILE_CANCEL_INPUT_ID) {
+            rect(x, y, width, height, hover ? 0xFF35313A : 0xFF24232A);
+            outline(x, y, width, height, 0xFF494650);
+            drawCenteredMenuText(label, x + width / 2f, y, height, hover ? WHITE : 0xFFB7BAC2);
+            return;
+        }
+        if (id == PROFILE_ADD_OFFLINE_ID || id == PROFILE_ADD_MICROSOFT_ID) {
+            int edge = id == PROFILE_ADD_MICROSOFT_ID ? 0xFF628FB8 : accent();
+            rect(x, y, width, height, hover ? 0xFF34313B : 0xFF24232A);
+            outline(x, y, width, height, hover ? edge : 0xFF494650);
+            drawCenteredMenuText(label, x + width / 2f, y, height, hover ? WHITE : edge);
+            return;
+        }
         rect(x + 4, y + 5, width, height, 0x75000000);
         rect(x, y, width, height, hover ? 0xD134202F : 0xC91C1520);
         int accentColor = accent() & 0x00FFFFFF;
@@ -1240,6 +1502,55 @@ public class AntagonHud {
         GL11.glTranslatef(centerX, y + (height - 16 * scale) / 2f, 0);
         GL11.glScalef(scale, scale, 1f);
         text(label, -font.width(label) / 2f, 0, WHITE);
+        GL11.glPopMatrix();
+    }
+
+    private void drawProfileRow(int index, int x, int y, int width, int height, boolean hover) {
+        if (index < 0 || index >= profileSelectorEntries.size()) return;
+        ProfileSelectorEntry entry = profileSelectorEntries.get(index);
+        boolean selected =
+                entry.nickname.equals(profileNickname)
+                        && (entry.command.equals("select") == profileMode.equals("offline"));
+        boolean microsoft = entry.command.equals("premium-select");
+        int accentColor = accent();
+        rect(
+                x,
+                y,
+                width,
+                height,
+                selected ? (hover ? 0xFF35252E : 0xFF2A2028) : (hover ? 0xFF302E36 : 0xFF1D1C23));
+        outline(x, y, width, height, selected ? accentColor : (hover ? 0xFF696572 : 0xFF37353E));
+        float scale = Math.max(0.5f, height / 25f);
+        if (selected) rect(x, y + 1, Math.max(2, Math.round(2 * scale)), height - 2, accentColor);
+        int textX = x + Math.round(8 * scale);
+        int markSize = Math.max(6, Math.round(8 * scale));
+        int markGap = Math.max(2, Math.round(4 * scale));
+        if (microsoft) {
+            drawMicrosoftMark(textX, y + (height - markSize) / 2, markSize);
+            textX += markSize + markGap;
+        }
+        text(
+                fit(entry.nickname, x + width - Math.round(7 * scale) - textX),
+                textX,
+                y + (height - 8) / 2,
+                selected ? WHITE : 0xFFE4E1E8);
+    }
+
+    private void drawMicrosoftMark(int x, int y, int size) {
+        int gap = Math.max(1, size / 8);
+        int square = (size - gap) / 2;
+        rect(x, y, square, square, 0xFFF25022);
+        rect(x + square + gap, y, square, square, 0xFF7FBA00);
+        rect(x, y + square + gap, square, square, 0xFF00A4EF);
+        rect(x + square + gap, y + square + gap, square, square, 0xFFFFB900);
+    }
+
+    private void drawCenteredMenuText(String label, float centerX, int y, int height, int color) {
+        float scale = Math.min(1f, Math.min((height - 4f) / 8f, 1f));
+        GL11.glPushMatrix();
+        GL11.glTranslatef(centerX, y + (height - 8 * scale) / 2f, 0);
+        GL11.glScalef(scale, scale, 1f);
+        text(label, -font.width(label) / 2f, 0, color);
         GL11.glPopMatrix();
     }
 
@@ -1285,28 +1596,44 @@ public class AntagonHud {
                 if (id == ACCOUNTS_BUTTON_ID) {
                     refreshProfileSnapshot();
                     profileSelectorOpen = !profileSelectorOpen;
-                    profilePage = 0;
+                    profileScrollOffset = 0;
+                    profileScrollbarDragging = false;
                     profileInputActive = false;
                     profileInput = "";
+                    profileTextField = null;
                     refreshProfileSelectorButtons(screen);
                     event.setCanceled(true);
                     return;
                 }
                 if (id == PROFILE_ADD_OFFLINE_ID) {
-                    profileInputActive = !profileInputActive;
+                    profileInputActive = true;
                     profileInput = "";
+                    profileTextField = null;
                     refreshProfileSelectorButtons(screen);
                     event.setCanceled(true);
                     return;
                 }
                 if (id == PROFILE_USE_OFFLINE_ID) {
+                    profileInput =
+                            profileTextField == null
+                                    ? profileInput
+                                    : (String)
+                                            call(
+                                                    profileTextField,
+                                                    new String[] {"func_146179_b", "getText"});
                     if (profileInput.matches("[A-Za-z0-9_]{3,16}")) {
                         sendProfileSelectorRequest("add", profileInput);
                         profileSelectorOpen = false;
                         profileInputActive = false;
                         profileInput = "";
+                        profileTextField = null;
                         refreshProfileSelectorButtons(screen);
                     } else profileNotice = "Usa de 3 a 16 letras, numeros o _.";
+                    event.setCanceled(true);
+                    return;
+                }
+                if (id == PROFILE_CANCEL_INPUT_ID) {
+                    cancelProfileInput(screen);
                     event.setCanceled(true);
                     return;
                 }
@@ -1315,27 +1642,15 @@ public class AntagonHud {
                     event.setCanceled(true);
                     return;
                 }
-                if (id == PROFILE_PREVIOUS_PAGE_ID || id == PROFILE_NEXT_PAGE_ID) {
-                    int pages =
-                            MenuLayout.profilePageCount(
-                                    profileSelectorEntries.size(), profileVisibleRows);
-                    profilePage += id == PROFILE_PREVIOUS_PAGE_ID ? -1 : 1;
-                    profilePage =
-                            MenuLayout.clampProfilePage(
-                                    profilePage, profileSelectorEntries.size(), profileVisibleRows);
-                    if (pages > 1) refreshProfileSelectorButtons(screen);
-                    event.setCanceled(true);
-                    return;
-                }
                 if (id >= PROFILE_ITEM_ID
                         && id < PROFILE_ITEM_ID + 16
-                        && MenuLayout.profilePageStart(profilePage, profileVisibleRows)
+                        && profileScrollOffset
                                         + id
                                         - PROFILE_ITEM_ID
                                 < profileSelectorEntries.size()) {
                     ProfileSelectorEntry entry =
                             profileSelectorEntries.get(
-                                    MenuLayout.profilePageStart(profilePage, profileVisibleRows)
+                                    profileScrollOffset
                                             + id
                                             - PROFILE_ITEM_ID);
                     sendProfileSelectorRequest(entry.command, entry.nickname);
@@ -1350,7 +1665,7 @@ public class AntagonHud {
                 if (id >= PROFILE_REMOVE_ID
                         && id < PROFILE_REMOVE_ID + 16) {
                     int index =
-                            MenuLayout.profilePageStart(profilePage, profileVisibleRows)
+                            profileScrollOffset
                                     + id
                                     - PROFILE_REMOVE_ID;
                     if (index >= profileSelectorEntries.size()) return;
@@ -2237,12 +2552,30 @@ public class AntagonHud {
                 Files.delete(PROFILE_REQUEST.toPath());
 
                 clickMenuButton(screen, ACCOUNTS_BUTTON_ID);
-                clickMenuButton(screen, PROFILE_ADD_MICROSOFT_ID);
-                assertProfileRequest("profile\tpremium\t");
-                Files.delete(PROFILE_REQUEST.toPath());
+                boolean microsoftButtonFound = false;
+                for (Object button :
+                        (List<Object>) field(screen, "field_146292_n", "buttonList"))
+                    if (((Number) field(button, "field_146127_k", "id")).intValue()
+                            == PROFILE_ADD_MICROSOFT_ID) microsoftButtonFound = true;
+                if (!microsoftButtonFound)
+                    throw new IllegalStateException("No aparece la acción para agregar Microsoft.");
 
                 profileSelectorOpen = true;
                 refreshProfileSelectorButtons(screen);
+                List<String> savedOfflineProfiles =
+                        new ArrayList<String>(profileOfflineNames);
+                for (int i = 1; i <= 12; i++) profileOfflineNames.add("ScrollNick" + i);
+                refreshProfileSelectorButtons(screen);
+                if (profileVisibleRows != 6
+                        || profileSelectorEntries.size() <= profileVisibleRows)
+                    throw new IllegalStateException("La lista larga no activó el scroll de perfiles.");
+                setProfileScrollOffset(6, screen);
+                if (!profileSelectorEntries.get(profileScrollOffset).nickname.equals("ScrollNick5"))
+                    throw new IllegalStateException("El scroll no llevó al perfil solicitado.");
+                shot("antagon-profiles.png");
+                profileOfflineNames.clear();
+                profileOfflineNames.addAll(savedOfflineProfiles);
+                setProfileScrollOffset(0, screen);
                 premiumIndex = -1;
                 for (int i = 0; i < profileSelectorEntries.size(); i++)
                     if (profileSelectorEntries.get(i).command.equals("premium-select")

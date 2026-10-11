@@ -124,6 +124,38 @@ final class MenuLayout {
         return page * rows;
     }
 
+    static int profileScrollOffset(int offset, int count, int visibleRows) {
+        return Math.max(0, Math.min(offset, Math.max(0, count - visibleRows)));
+    }
+
+    static int profileScrollbarThumbSize(
+            int trackHeight, int count, int visibleRows, int minimumThumbHeight) {
+        if (trackHeight <= 0 || count <= 0 || visibleRows <= 0) return 0;
+        return Math.min(
+                trackHeight,
+                Math.max(
+                        minimumThumbHeight,
+                        trackHeight * Math.min(visibleRows, count) / count));
+    }
+
+    static int profileScrollbarThumbOffset(
+            int trackTravel, int offset, int count, int visibleRows) {
+        int maxOffset = Math.max(0, count - visibleRows);
+        if (trackTravel <= 0 || maxOffset == 0) return 0;
+        return Math.round(
+                trackTravel
+                        * (float) profileScrollOffset(offset, count, visibleRows)
+                        / maxOffset);
+    }
+
+    static int profileScrollOffsetFromThumb(
+            int thumbOffset, int trackTravel, int count, int visibleRows) {
+        int maxOffset = Math.max(0, count - visibleRows);
+        if (trackTravel <= 0 || maxOffset == 0) return 0;
+        int boundedOffset = Math.max(0, Math.min(thumbOffset, trackTravel));
+        return Math.round(boundedOffset * (float) maxOffset / trackTravel);
+    }
+
     static float[] card(int index, float x, float y, float scroll) {
         float width = (WIDTH - PADDING * 2 - 16) / 3f;
         return new float[] {
