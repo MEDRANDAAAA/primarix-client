@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const assert = require('node:assert/strict');
 const { unzipSync, zipSync } = require('fflate');
 const { DEFAULTS } = require('../electron/settings.cjs');
+const { createVoiceServer } = require('../backend/server.js');
 
 (async () => {
   const root = path.resolve(__dirname, '..');
@@ -18,12 +19,38 @@ const { DEFAULTS } = require('../electron/settings.cjs');
   await fs.mkdir(modsDirectory, { recursive: true });
   await fs.writeFile(path.join(modsDirectory, 'ExampleMod.jar'), Buffer.from([0x50, 0x4b, 0x03, 0x04]));
   await fs.writeFile(path.join(modsDirectory, 'client-core.jar'), Buffer.from([0x50, 0x4b, 0x03, 0x04]));
-  const app = await electron.launch({
-    ...(process.env.ANTAGON_EXECUTABLE
-      ? { executablePath: process.env.ANTAGON_EXECUTABLE, args: [`--user-data-dir=${electronUserData}`] }
-      : { args: [`--user-data-dir=${electronUserData}`, root] }),
-    env: { ...process.env, ANTAGON_TEST_ROOT: profile },
-  });
+  const voiceServer = createVoiceServer({ port: 0, host: '127.0.0.1' });
+  const voiceAddress = await voiceServer.listen();
+  let app;
+  try {
+    app = await electron.launch({
+      ...(process.env.ANTAGON_EXECUTABLE
+        ? {
+            executablePath: process.env.ANTAGON_EXECUTABLE,
+            args: [
+              `--user-data-dir=${electronUserData}`,
+              '--use-fake-device-for-media-stream',
+              '--use-fake-ui-for-media-stream',
+            ],
+          }
+        : {
+            args: [
+              `--user-data-dir=${electronUserData}`,
+              '--use-fake-device-for-media-stream',
+              '--use-fake-ui-for-media-stream',
+              root,
+            ],
+          }),
+      env: {
+        ...process.env,
+        ANTAGON_TEST_ROOT: profile,
+        PRIMARIX_VOICE_URL: `http://127.0.0.1:${voiceAddress.port}`,
+      },
+    });
+  } catch (error) {
+    await voiceServer.close();
+    throw error;
+  }
   const page = await app.firstWindow();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -56,6 +83,37 @@ const { DEFAULTS } = require('../electron/settings.cjs');
       BrowserWindow.getAllWindows()[0].webContents.send('game:open-view', 'settings'),
     );
     await page.waitForFunction(() => document.querySelector('#view-settings').classList.contains('active'));
+    await page.click('[data-view="voice"]');
+    await page.waitForFunction(() => document.querySelector('#view-voice').classList.contains('active'));
+    assert.equal(await page.locator('#voice-connect-form').isVisible(), true);
+    assert.equal(await page.locator('#voice-room-list').count(), 1);
+    await page.click('#voice-connect');
+    await page.waitForFunction(() => !document.querySelector('#voice-lobby').hidden);
+    await page.fill('#voice-room-name', 'Prueba desde Electron');
+    await page.click('#voice-create-form button[type="submit"]');
+    await page.waitForFunction(
+      () =>
+        !document.querySelector('#voice-room-view').hidden &&
+        document.querySelector('#voice-room-title').textContent === 'Prueba desde Electron',
+    );
+    await page.waitForFunction(() => document.querySelector('#voice-mute').textContent === 'Mutear micrófono');
+    await page.click('#voice-mute');
+    await page.waitForFunction(() => document.querySelector('#voice-mute').textContent === 'Activar micrófono');
+    await page.click('#voice-mute');
+    await page.waitForFunction(() => document.querySelector('#voice-mute').textContent === 'Mutear micrófono');
+    await page.click('#voice-deafen');
+    await page.waitForFunction(() => document.querySelector('#voice-deafen').textContent === 'Activar audio');
+    await page.click('#voice-deafen');
+    await page.fill('#voice-chat-input', 'Mensaje de prueba');
+    await page.click('#voice-chat-form button[type="submit"]');
+    await page.waitForFunction(() =>
+      document.querySelector('#voice-messages').textContent.includes('Mensaje de prueba'),
+    );
+    await page.click('#voice-leave');
+    await page.waitForFunction(() => !document.querySelector('#voice-lobby').hidden);
+    await page.click('#voice-lobby-disconnect');
+    await page.waitForFunction(() => !document.querySelector('#voice-connection').hidden);
+    await page.click('[data-view="play"]');
     await page.click('[data-view="mods"]');
     await page.waitForFunction(() => document.querySelectorAll('#mods-list .mod-row').length === 1);
     assert.equal(await page.locator('#mods-path').textContent(), 'Mods externos del perfil Primarix');
@@ -460,9 +518,12 @@ const { DEFAULTS } = require('../electron/settings.cjs');
     await page.waitForFunction(() => document.querySelector('#connected-account').textContent === 'CuentaDos');
     assert.equal(await page.locator('#profile-name').textContent(), 'CuentaDos');
     assert.equal(errors.length, 0, errors.join('\n'));
-    console.log('UI OK: tienda, admin, navegación, movimiento reducido, nicks rápidos, cambio Microsoft y Discord.');
+    console.log(
+      'UI OK: salas y chat de voz, tienda, admin, navegación, movimiento reducido, nicks rápidos, cuenta Microsoft y Discord.',
+    );
   } finally {
     await app.close();
+    await voiceServer.close();
     await fs.rm(profile, { recursive: true, force: true });
   }
 })().catch((error) => {

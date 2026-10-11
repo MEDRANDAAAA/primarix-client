@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Voice room integration harness</title>
+  </head>
+  <body>
+    <script type="module">
+      import { createVoiceRooms } from '../../ui/voice.js';
+
+      const { io } = window.require('socket.io-client');
+      const clients = [];
+      const controllers = [];
+      const notices = [];
+
+      function request(socket, event, payload = {}) {
+        return new Promise((resolve, reject) => {
+          socket.timeout(5000).emit(event, payload, (timeout, result) => {
+            if (timeout) return reject(timeout);
+            if (!result?.ok) return reject(Error(result?.error || 'Request rejected.'));
+            resolve(result.value);
+          });
+        });
+      }
+
+      window.voiceTest = {
+        clients,
+        controllers,
+        notices,
+        create(nickname) {
+          let socket;
+          const listeners = new Set();
+          const api = {
+            call: { microphone: async () => true },
+            voice: {
+              connect: async (url) => {
+                if (socket?.connected) return { serverUrl: url };
+                socket?.close();
+                socket = io(url, { autoConnect: false, auth: { nickname }, transports: ['websocket'] });
+                socket.on('voice:event', (event) => {
+                  if (event.type === 'idle') socket.disconnect();
+                });
+                for (const listener of listeners) socket.on('voice:event', listener);
+                await new Promise((resolve, reject) => {
+                  socket.once('connect', resolve);
+                  socket.once('connect_error', reject);
+                  socket.connect();
+                });
+                return { serverUrl: url };
+              },
+              disconnect: async () => socket?.disconnect(),
+              rooms: () => request(socket, 'voice:rooms'),
+              createRoom: (room) => request(socket, 'voice:create', room),
+              joinRoom: (id, password) => request(socket, 'voice:join', { roomId: id, password }),
+              leaveRoom: () => request(socket, 'voice:leave'),
+              sendChat: (channel, body) => request(socket, 'voice:chat', { channel, body }),
+              setState: (muted, deafened) => request(socket, 'voice:state', { muted, deafened }),
+              signal: (to, kind, payload) => request(socket, 'voice:signal', { to, kind, payload }),
+              onEvent: (listener) => {
+                listeners.add(listener);
+                if (socket) socket.on('voice:event', listener);
+                return () => {
+                  listeners.delete(listener);
+                  socket?.off('voice:event', listener);
+                };
+              },
+            },
+          };
+          const index = clients.length;
+          const controller = createVoiceRooms({
+            api,
+            toast: (message) => notices.push(message),
+            onChange: () => {},
+          });
+          clients.push(api);
+          controllers.push(controller);
+          return index;
+        },
+      };
+    </script>
+  </body>
+</html>

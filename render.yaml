@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: primarix-voice
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: VOICE_IDLE_TIMEOUT_MS
+        value: '60000'

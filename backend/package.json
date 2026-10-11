@@ -1,0 +1,15 @@
+{
+  "name": "primarix-voice-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Servidor anónimo de salas de voz y chat para Primarix Client",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test ../tests/voice-server.test.cjs"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  }
+}
