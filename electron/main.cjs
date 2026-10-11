@@ -864,7 +864,7 @@ app
       cosmeticStorageUrl: community?.storageUrl || '',
       state,
       version: app.getVersion(),
-      voiceServerUrl: process.env.PRIMARIX_VOICE_URL || '',
+      voiceServerUrl: process.env.PRIMARIX_VOICE_URL || 'https://primarix-voice.onrender.com',
       installed: fs.existsSync(path.join(root, 'installation.json')),
       optifine: optifine(),
       wallpaper: wallpaper(),

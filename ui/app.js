@@ -1544,7 +1544,7 @@ window.addEventListener('pagehide', () => {
     cosmeticStorageUrl = data.cosmeticStorageUrl;
     settingsStore = createSettingsStore(data.settings, api.saveSettings);
     settings = settingsStore.value;
-    $('#voice-server-url').value = data.voiceServerUrl || 'http://localhost:3080';
+    $('#voice-server-url').value = data.voiceServerUrl || 'https://primarix-voice.onrender.com';
     api.onSettingsUpdated(async (updated) => {
       try {
         const profileChanged = settings.nickname !== updated.nickname || settings.mode !== updated.mode;
