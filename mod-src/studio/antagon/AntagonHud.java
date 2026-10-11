@@ -903,7 +903,7 @@ public class AntagonHud {
                             bounds[0] + inset,
                             addOfflineY + rowHeight,
                             contentWidth,
-                            "CANCELAR",
+                            "VOLVER",
                             scale));
         } else {
             profileTextField = null;

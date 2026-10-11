@@ -860,6 +860,11 @@ main {
   font-size: 12px;
   min-width: 0;
 }
+#game-diagnostic {
+  margin-top: 6px;
+  padding: 5px 9px;
+  font-size: 11px;
+}
 #progress-track {
   display: none;
   height: 3px;

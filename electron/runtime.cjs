@@ -497,11 +497,12 @@ class Runtime {
     });
     child.on('close', (code) => {
       this.child = null;
-      log.end();
-      this.emit({
-        phase: code ? 'error' : 'idle',
-        message: code ? 'El juego se cerró con un error. Consulta el diagnóstico.' : 'Juego cerrado',
-        exitCode: code,
+      log.end(() => {
+        this.emit({
+          phase: code ? 'error' : 'idle',
+          message: code ? 'El juego se cerró con un error. Consulta el diagnóstico.' : 'Juego cerrado',
+          exitCode: code,
+        });
       });
     });
     await new Promise((resolve, reject) => {

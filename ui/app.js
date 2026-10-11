@@ -776,6 +776,7 @@ function updateState(state) {
     state.phase === 'running' && state.activeInstances > 0
       ? `${state.activeInstances} ${state.activeInstances === 1 ? 'instancia abierta' : 'instancias abiertas'}`
       : state.message;
+  $('#game-diagnostic').hidden = state.phase !== 'error';
   $('#launch').disabled = working;
   $('#launch').textContent =
     state.activeInstances > 0 && !working
@@ -902,10 +903,15 @@ for (const folder of ['resourcepacks', 'screenshots'])
     const error = await api.openFolder(folder);
     if (error) toast(error);
   });
-action('#open-logs', async () => {
-  $('#logs-text').textContent = await api.logs();
+async function showGameLogs() {
+  const logs = await api.logs();
+  $('#logs-text').textContent = logs.trim()
+    ? logs
+    : 'El juego no llegó a escribir datos en el registro. Comparte esta información junto con la captura del error.';
   $('#logs-dialog').showModal();
-});
+}
+action('#open-logs', showGameLogs);
+action('#game-diagnostic', showGameLogs);
 const community = api.community;
 const ITEMS = {
   antagon_cape: {

@@ -40,8 +40,9 @@
         <div class="play-panel">
           <div class="version"><b>Minecraft 1.8.9</b><small id="install-state">Forge</small></div>
           <div class="status">
-            <span id="launch-status">Listo para jugar</span>
+            <span id="launch-status" role="status" aria-live="polite">Listo para jugar</span>
             <div id="progress-track"><i id="progress-bar"></i></div>
+            <button class="secondary" id="game-diagnostic" hidden>Ver diagnóstico</button>
           </div>
           <button class="play" id="launch">JUGAR</button>
         </div>
