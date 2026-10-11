@@ -21,6 +21,7 @@
         <button class="tab active" data-view="play">Jugar</button><button class="tab" data-view="mods">Mods</button
         ><button class="tab" data-view="resourcepacks">Paquetes</button
         ><button class="tab" data-view="friends">Amigos<span class="badge" id="friends-badge" hidden></span></button
+        ><button class="tab" data-view="voice">Voz</button
         ><button class="tab" data-view="admin" id="admin-tab" hidden>Admin</button
         ><button class="tab" data-view="settings">Ajustes</button>
       </nav>
@@ -150,6 +151,139 @@
               <button class="primary">Enviar</button>
             </form>
           </div>
+        </div>
+      </section>
+
+      <section id="view-voice" class="view">
+        <div class="voice-page">
+          <div class="voice-heading">
+            <div>
+              <h1>Voice Chat</h1>
+              <p>Salas y chat de voz para jugadores de Primarix.</p>
+            </div>
+            <span id="voice-identity" class="voice-identity"></span>
+          </div>
+          <div id="voice-connection" class="voice-connection">
+            <form id="voice-connect-form">
+              <label for="voice-server-url">Servidor de voz</label>
+              <div class="voice-connect-row">
+                <input id="voice-server-url" type="url" placeholder="https://voz.tuservidor.com" autocomplete="url" />
+                <button class="primary" id="voice-connect">Conectar</button>
+              </div>
+              <small
+                >Necesitas la dirección HTTPS del servidor de voz. Para probar en este equipo, usa
+                http://localhost:3080.</small
+              >
+            </form>
+          </div>
+          <div id="voice-lobby" class="voice-lobby" hidden>
+            <aside class="voice-sidebar">
+              <div class="voice-lobby-heading">
+                <h2>Salas públicas</h2>
+                <div>
+                  <button class="secondary" id="voice-refresh" type="button">Actualizar</button>
+                  <button class="secondary" id="voice-lobby-disconnect" type="button">Desconectar</button>
+                </div>
+              </div>
+              <div id="voice-room-list" class="voice-room-list"></div>
+              <p id="voice-rooms-empty" class="voice-empty" hidden>No hay salas públicas. ¡Crea la primera!</p>
+              <form id="voice-invite-form" class="voice-invite-form">
+                <h3>Unirse por invitación</h3>
+                <label
+                  >ID de sala<input
+                    id="voice-invite-id"
+                    maxlength="36"
+                    autocomplete="off"
+                    placeholder="Pega el ID compartido"
+                    required
+                /></label>
+                <label
+                  >Contraseña (si es privada)<input
+                    id="voice-invite-password"
+                    type="password"
+                    maxlength="64"
+                    autocomplete="off"
+                /></label>
+                <button class="secondary" type="submit">Unirse</button>
+              </form>
+              <form id="voice-create-form" class="voice-create-form">
+                <h3>Crear sala</h3>
+                <label>Nombre<input id="voice-room-name" maxlength="32" required placeholder="Mi sala" /></label>
+                <label
+                  >Visibilidad
+                  <select id="voice-room-visibility">
+                    <option value="public">Pública</option>
+                    <option value="private">Privada con contraseña</option>
+                  </select>
+                </label>
+                <label id="voice-password-row" hidden
+                  >Contraseña
+                  <input
+                    id="voice-room-password"
+                    type="password"
+                    minlength="4"
+                    maxlength="64"
+                    autocomplete="new-password"
+                  />
+                </label>
+                <label
+                  >Máximo de jugadores
+                  <select id="voice-room-capacity">
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                    <option value="15" selected>15</option>
+                  </select>
+                </label>
+                <button class="primary" type="submit">Crear sala</button>
+              </form>
+            </aside>
+            <div class="voice-welcome">
+              <div class="voice-welcome-icon">♫</div>
+              <h2>Elige una sala</h2>
+              <p>Únete a una sala pública o crea una para tus amigos.</p>
+            </div>
+          </div>
+          <div id="voice-room-view" class="voice-room-view" hidden>
+            <aside class="voice-members-panel">
+              <div class="voice-room-heading">
+                <div>
+                  <h2 id="voice-room-title"></h2>
+                  <small id="voice-room-count"></small>
+                </div>
+                <button class="secondary" id="voice-leave" type="button">Salir</button>
+              </div>
+              <div id="voice-room-invite" class="voice-room-invite" hidden>
+                <small>Sala privada · Comparte este ID y la contraseña</small>
+                <code id="voice-room-id"></code
+                ><button class="secondary" id="voice-copy-id" type="button">Copiar ID</button>
+              </div>
+              <h3>Miembros</h3>
+              <div id="voice-members" class="voice-members"></div>
+              <div class="voice-controls">
+                <button class="secondary" id="voice-mute" type="button">Activar micrófono</button>
+                <button class="secondary" id="voice-deafen" type="button">Ensordecer</button>
+                <button class="danger" id="voice-disconnect" type="button">Desconectar</button>
+              </div>
+            </aside>
+            <div class="voice-chat-panel">
+              <div class="voice-chat-heading">
+                <h3>Chat</h3>
+                <div class="segmented voice-chat-tabs">
+                  <button type="button" data-voice-channel="general">General</button>
+                  <button type="button" data-voice-channel="room">Sala</button>
+                </div>
+              </div>
+              <div id="voice-messages" class="voice-messages" role="log" aria-live="polite"></div>
+              <form id="voice-chat-form" class="voice-chat-form">
+                <input id="voice-chat-input" maxlength="500" autocomplete="off" placeholder="Escribe un mensaje…" />
+                <button class="primary" type="submit">Enviar</button>
+              </form>
+            </div>
+          </div>
+          <p class="voice-disclosure">
+            El servidor no verifica cuentas de Minecraft: los nicks son declarativos y pueden suplantarse. Las salas se
+            guardan solo en memoria del servidor y el audio requiere conectividad WebRTC; algunas redes necesitan TURN.
+          </p>
         </div>
       </section>
 

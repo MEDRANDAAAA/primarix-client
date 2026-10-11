@@ -24,6 +24,7 @@ const { searchResourcePacks, getResourcePackDetails, downloadResourcePack } = re
 const updater = require('./updater.cjs');
 const { Community, cosmeticUrl, isCapeTexture } = require('./community.cjs');
 const { DiscordPresence } = require('./discord.cjs');
+const { VoiceGateway } = require('./voice.cjs');
 const { syncGameAccent } = require('./game-theme.cjs');
 const { DEFAULTS, validateSettings, offlineAccount } = require('./settings.cjs');
 const { applyCommand: applyGameProfileCommand, snapshot: gameProfilesSnapshot } = require('./game-profiles.cjs');
@@ -52,6 +53,9 @@ let win,
   busy = false,
   runtime;
 const gameInstances = new Map();
+const voiceGateway = new VoiceGateway((event) => {
+  if (win && !win.isDestroyed()) win.webContents.send('voice:event', event);
+}, process.env.PRIMARIX_VOICE_URL || '');
 const baseGameDir = path.join(root, 'minecraft');
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -74,6 +78,9 @@ function loadSettings() {
 }
 function saveSettings(next) {
   const validated = validateSettings(next);
+  const previousNickname = settings?.mode === 'microsoft' && account ? account.name : settings?.nickname;
+  const nextNickname = validated.mode === 'microsoft' && account ? account.name : validated.nickname;
+  if (previousNickname && nextNickname !== previousNickname) voiceGateway.close();
   if (settings && validated.accentColor !== settings.accentColor)
     for (const gameDir of gameDirectories()) syncGameAccent(gameDir, validated.accentColor);
   atomic(path.join(root, 'settings.json'), JSON.stringify(validated, null, 2));
@@ -697,7 +704,10 @@ function loadAccount() {
   }
 }
 function persistAccount(mc, xbox) {
+  const previousVoiceNickname = settings?.mode === 'microsoft' && account ? account.name : settings?.nickname;
   account = { name: mc.profile.name, id: mc.profile.id, refresh: xbox.save() };
+  const nextVoiceNickname = settings?.mode === 'microsoft' && account ? account.name : settings?.nickname;
+  if (previousVoiceNickname && nextVoiceNickname !== previousVoiceNickname) voiceGateway.close();
   const existing = accounts.findIndex((saved) => saved.id === account.id);
   if (existing >= 0) accounts[existing] = account;
   else accounts.push(account);
@@ -835,6 +845,14 @@ app
     startupTrace('window constructed');
     console.log('[PRIMARIX DEBUG] launcher window created');
     win.setMenu(null);
+    win.webContents.session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+      callback(
+        webContents === win.webContents &&
+          permission === 'media' &&
+          details?.mediaTypes?.includes('audio') &&
+          !details.mediaTypes.includes('video'),
+      );
+    });
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e, url) => {
       if (url !== pathToFileURL(ui).href) e.preventDefault();
@@ -846,6 +864,7 @@ app
       cosmeticStorageUrl: community?.storageUrl || '',
       state,
       version: app.getVersion(),
+      voiceServerUrl: process.env.PRIMARIX_VOICE_URL || 'https://primarix-voice.onrender.com',
       installed: fs.existsSync(path.join(root, 'installation.json')),
       optifine: optifine(),
       wallpaper: wallpaper(),
@@ -865,6 +884,7 @@ app
     handle('account:logout', async () => {
       await communityReady;
       if (community.me) await community.signOut();
+      voiceGateway.close();
       if (account) accounts = accounts.filter((saved) => saved.id !== account.id);
       account = accounts[0] || null;
       sessionAccount = null;
@@ -918,6 +938,23 @@ app
     handle('community:messages', (id) => (needCommunity(), community.messages(String(id))));
     handle('community:send', (id, body) => (needCommunity(), community.send(String(id), body)));
     handle('community:join', (server) => startGame(String(server || '')));
+    handle('voice:connect', (url) => {
+      const nickname = settings.mode === 'microsoft' && account?.name ? account.name : settings.nickname;
+      return voiceGateway.connect(String(url || ''), nickname);
+    });
+    handle('voice:disconnect', () => {
+      voiceGateway.close();
+      return true;
+    });
+    handle('voice:rooms', () => voiceGateway.listRooms());
+    handle('voice:create', (room) => voiceGateway.createRoom(room || {}));
+    handle('voice:join', (id, password) => voiceGateway.joinRoom(String(id || ''), String(password || '')));
+    handle('voice:leave', () => voiceGateway.leaveRoom());
+    handle('voice:chat', (channel, body) => voiceGateway.sendChat(String(channel || ''), String(body || '')));
+    handle('voice:state', (muted, deafened) => voiceGateway.setState(muted === true, deafened === true));
+    handle('voice:signal', (to, kind, payload) =>
+      voiceGateway.signal(String(to || ''), String(kind || ''), payload || {}),
+    );
     handle('store:state', () => (needCommunity(), community.store()));
     handle('store:purchase', (item) => (needCommunity(), community.purchase(String(item || ''))));
     handle(
@@ -1147,6 +1184,7 @@ let leaving = false;
 app.on('before-quit', (event) => {
   quitting = true;
   discord.stop();
+  voiceGateway.close();
   community?.stop();
   if (leaving || !community?.me) return;
   event.preventDefault();

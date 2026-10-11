@@ -48,6 +48,22 @@ contextBridge.exposeInMainWorld('antagon', {
       return () => ipcRenderer.removeListener('call:command', listener);
     },
   },
+  voice: {
+    connect: (url) => call('voice:connect', url),
+    disconnect: () => call('voice:disconnect'),
+    rooms: () => call('voice:rooms'),
+    createRoom: (room) => call('voice:create', room),
+    joinRoom: (id, password) => call('voice:join', id, password),
+    leaveRoom: () => call('voice:leave'),
+    sendChat: (channel, body) => call('voice:chat', channel, body),
+    setState: (muted, deafened) => call('voice:state', muted, deafened),
+    signal: (to, kind, payload) => call('voice:signal', to, kind, payload),
+    onEvent: (fn) => {
+      const listener = (_, event) => fn(event);
+      ipcRenderer.on('voice:event', listener);
+      return () => ipcRenderer.removeListener('voice:event', listener);
+    },
+  },
   store: {
     state: () => call('store:state'),
     purchase: (item) => call('store:purchase', item),

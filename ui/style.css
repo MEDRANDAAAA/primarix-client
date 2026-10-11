@@ -1831,6 +1831,365 @@ pre {
 .chat-head button {
   margin-left: auto;
 }
+
+#view-voice {
+  overflow: auto;
+}
+.voice-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1180px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 24px 28px 14px;
+}
+.voice-heading,
+.voice-lobby-heading,
+.voice-room-heading,
+.voice-chat-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.voice-heading h1 {
+  margin: 0;
+  font: 22px var(--pixel);
+}
+.voice-heading p,
+.voice-identity,
+.voice-disclosure,
+.voice-room-heading small,
+.voice-room-card small,
+.voice-empty,
+.voice-connection small {
+  color: var(--muted);
+}
+.voice-heading p {
+  margin: 4px 0 0;
+}
+.voice-identity {
+  font-size: 12px;
+}
+.voice-connection {
+  width: min(100%, 620px);
+  margin: auto;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--glass-shadow);
+}
+.voice-connection label,
+.voice-create-form label,
+.voice-invite-form label {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.voice-connect-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.voice-connect-row input,
+.voice-create-form input,
+.voice-create-form select,
+.voice-invite-form input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--glass);
+  color: var(--text);
+}
+.voice-connect-row input {
+  flex: 1;
+}
+.voice-connection small {
+  display: block;
+  line-height: 1.5;
+}
+.voice-lobby,
+.voice-room-view {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.voice-lobby {
+  grid-template-columns: minmax(300px, 370px) minmax(0, 1fr);
+}
+.voice-sidebar,
+.voice-members-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+}
+.voice-sidebar,
+.voice-members-panel {
+  border-right: 1px solid var(--line);
+}
+.voice-lobby-heading h2,
+.voice-room-heading h2,
+.voice-welcome h2 {
+  margin: 0;
+  font: 15px var(--pixel);
+}
+.voice-lobby-heading > div {
+  display: flex;
+  gap: 6px;
+}
+.voice-lobby-heading .secondary {
+  height: 28px;
+  font-size: 11px;
+}
+.voice-room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 10px 0;
+}
+.voice-room-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--glass);
+}
+.voice-room-details {
+  flex: 1;
+  min-width: 0;
+}
+.voice-room-details strong,
+.voice-room-details small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voice-room-card .primary,
+.voice-invite-form .secondary {
+  height: 28px;
+  font-size: 11px;
+}
+.voice-empty {
+  margin: 12px 0;
+  font-size: 12px;
+}
+.voice-create-form,
+.voice-invite-form {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+}
+.voice-create-form h3,
+.voice-invite-form h3,
+.voice-members-panel > h3,
+.voice-chat-heading h3 {
+  margin: 0;
+  color: var(--muted);
+  font: 12px var(--pixel);
+}
+.voice-create-form label input,
+.voice-create-form label select,
+.voice-invite-form label input {
+  display: block;
+  margin-top: 4px;
+}
+.voice-create-form select,
+.voice-invite-form select {
+  color-scheme: dark;
+}
+.voice-welcome {
+  align-self: center;
+  justify-self: center;
+  max-width: 320px;
+  padding: 25px;
+  text-align: center;
+}
+.voice-welcome-icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  margin: 0 auto 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--raised);
+  color: var(--accent);
+  font-size: 28px;
+}
+.voice-welcome p {
+  color: var(--muted);
+}
+.voice-room-view {
+  grid-template-columns: minmax(285px, 370px) minmax(0, 1fr);
+}
+.voice-room-heading {
+  margin-bottom: 20px;
+}
+.voice-room-heading h2 {
+  margin-bottom: 4px;
+}
+.voice-room-heading .secondary,
+.voice-controls button {
+  font-size: 11px;
+}
+.voice-room-invite {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -8px 0 18px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--glass);
+}
+.voice-room-invite small {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+.voice-room-invite code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  user-select: text;
+}
+.voice-room-invite .secondary {
+  height: 27px;
+}
+.voice-members-panel > h3 {
+  margin-bottom: 8px;
+}
+.voice-members {
+  flex: 1;
+  min-height: 30px;
+  overflow: auto;
+}
+.voice-member {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 9px;
+  padding: 7px 2px;
+}
+.voice-member-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voice-member-flags {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 10px;
+}
+.voice-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.voice-chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.voice-chat-heading {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.voice-chat-tabs {
+  display: flex;
+}
+.voice-chat-tabs button {
+  padding: 5px 10px;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.voice-chat-tabs button.active {
+  background: var(--raised);
+  color: var(--text);
+}
+.voice-chat-tabs button:disabled {
+  opacity: 0.45;
+}
+.voice-messages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px;
+  user-select: text;
+}
+.voice-message {
+  margin-bottom: 13px;
+}
+.voice-message-header {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+}
+.voice-message-header strong {
+  font-size: 12px;
+}
+.voice-message-header time {
+  color: var(--muted);
+  font-size: 10px;
+}
+.voice-message p {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+.voice-chat-form {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+}
+.voice-chat-form input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--glass);
+}
+.voice-disclosure {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+@media (max-width: 900px) {
+  .voice-page {
+    padding: 18px;
+  }
+  .voice-lobby,
+  .voice-room-view {
+    grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+  }
+  .voice-controls button {
+    flex: 1 1 40%;
+  }
+}
 #call-panel {
   position: fixed;
   left: 18px;

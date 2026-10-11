@@ -1,7 +1,7 @@
 {
   "name": "primarix-client",
   "productName": "Primarix Launcher",
-  "version": "0.1.59",
+  "version": "0.1.60",
   "description": "Launcher y cliente PvP de Minecraft 1.8.9 con HUD configurable.",
   "main": "electron/main.cjs",
   "author": "Annth",
@@ -27,13 +27,15 @@
     "format:check": "prettier --check .",
     "test:discord": "node scripts/test-discord.cjs",
     "postpackage:mac": "node scripts/sign-mac.cjs && node scripts/copy-desktop-mac.cjs",
-    "test:call": "electron scripts/test-call.cjs"
+    "test:call": "electron scripts/test-call.cjs",
+    "test:voice": "electron scripts/test-voice.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
     "fflate": "^0.8.3",
     "msmc": "5.0.5",
     "node-unrar-js": "^2.0.2",
+    "socket.io-client": "^4.8.4",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {

@@ -1,6 +1,7 @@
 import { setWallpaper } from './wallpaper.js';
 import { createSettingsStore, createConversation } from './state.mjs';
 import { createCalls } from './call.js';
+import { createVoiceRooms } from './voice.js';
 
 const $ = (s) => document.querySelector(s),
   $$ = (s) => [...document.querySelectorAll(s)];
@@ -22,6 +23,101 @@ function toast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => $('#toast').classList.remove('show'), 4e3);
 }
+let voiceState;
+function renderVoice(value) {
+  voiceState = value;
+  const connected = value.status === 'lobby' || value.status === 'room';
+  const inRoom = value.status === 'room' && value.room;
+  $('#voice-connection').hidden = connected;
+  $('#voice-lobby').hidden = !connected || !!inRoom;
+  $('#voice-room-view').hidden = !inRoom;
+  $('#voice-connect').disabled = value.status === 'connecting';
+  $('#voice-connect').textContent = value.status === 'connecting' ? 'Conectando…' : 'Conectar';
+  $('#voice-identity').textContent = value.nickname ? `Conectado como ${value.nickname}` : '';
+
+  const rooms = $('#voice-room-list');
+  rooms.replaceChildren();
+  for (const room of value.rooms) {
+    const row = document.createElement('div');
+    row.className = 'voice-room-card';
+    const details = document.createElement('div');
+    details.className = 'voice-room-details';
+    const title = document.createElement('strong');
+    title.textContent = room.name;
+    const count = document.createElement('small');
+    count.textContent = `${room.members}/${room.maxMembers} jugadores`;
+    const join = document.createElement('button');
+    join.className = 'primary';
+    join.type = 'button';
+    join.textContent = 'Unirse';
+    join.disabled = room.members >= room.maxMembers;
+    join.dataset.voiceJoin = room.id;
+    details.append(title, count);
+    row.append(details, join);
+    rooms.append(row);
+  }
+  $('#voice-rooms-empty').hidden = value.rooms.length > 0;
+
+  const room = value.room;
+  if (room) {
+    $('#voice-room-title').textContent = room.name;
+    $('#voice-room-count').textContent = `${value.members.length}/${room.maxMembers} jugadores`;
+    $('#voice-room-invite').hidden = room.public;
+    $('#voice-room-id').textContent = room.id;
+    $('#voice-mute').textContent = value.muted ? 'Activar micrófono' : 'Mutear micrófono';
+    $('#voice-deafen').textContent = value.deafened ? 'Activar audio' : 'Ensordecer';
+    $('#voice-mute').setAttribute('aria-pressed', String(value.muted));
+    $('#voice-deafen').setAttribute('aria-pressed', String(value.deafened));
+  }
+
+  const members = $('#voice-members');
+  members.replaceChildren();
+  for (const member of value.members) {
+    const row = document.createElement('div');
+    row.className = 'voice-member';
+    const avatar = document.createElement('img');
+    avatar.className = 'head';
+    avatar.alt = '';
+    avatar.loading = 'lazy';
+    avatar.referrerPolicy = 'no-referrer';
+    avatar.src = `https://mc-heads.net/avatar/${encodeURIComponent(member.nickname)}/48`;
+    const who = document.createElement('span');
+    who.className = 'voice-member-name';
+    who.textContent = member.nickname + (member.id === value.selfId ? ' (tú)' : '');
+    const flags = document.createElement('span');
+    flags.className = 'voice-member-flags';
+    flags.textContent = `${member.muted ? 'Micrófono silenciado' : 'Micrófono activo'}${member.deafened ? ' · Ensordecido' : ''}`;
+    row.append(avatar, who, flags);
+    members.append(row);
+  }
+
+  const selectedChannel = value.channel === 'room' && !room ? 'general' : value.channel;
+  for (const tab of $$('[data-voice-channel]')) {
+    tab.classList.toggle('active', tab.dataset.voiceChannel === selectedChannel);
+    tab.disabled = tab.dataset.voiceChannel === 'room' && !room;
+  }
+  const messages = $('#voice-messages');
+  messages.replaceChildren();
+  for (const message of value.messages[selectedChannel] || []) {
+    const item = document.createElement('div');
+    item.className = 'voice-message';
+    const header = document.createElement('div');
+    header.className = 'voice-message-header';
+    const name = document.createElement('strong');
+    name.textContent = message.nickname + (message.senderId === value.selfId ? ' · Tú' : '');
+    const time = document.createElement('time');
+    time.dateTime = new Date(message.timestamp).toISOString();
+    time.textContent = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const body = document.createElement('p');
+    body.textContent = message.body;
+    header.append(name, time);
+    item.append(header, body);
+    messages.append(item);
+  }
+  messages.scrollTop = messages.scrollHeight;
+  $('#voice-chat-input').placeholder = selectedChannel === 'room' ? 'Mensaje para la sala…' : 'Mensaje general…';
+}
+const voiceRooms = createVoiceRooms({ api, toast, onChange: renderVoice });
 const calls = createCalls({
   api,
   me: () => people.me,
@@ -456,12 +552,91 @@ $$('[data-view]').forEach(
       if (tab.dataset.view === 'mods') refreshMods();
       if (tab.dataset.view === 'admin') refreshAdminAccess();
       if (tab.dataset.view === 'resourcepacks' && !resourcePackCatalogRequest) searchResourcePackCatalog();
+      if (tab.dataset.view === 'voice' && voiceState?.status === 'lobby')
+        voiceRooms.refresh().catch((error) => toast(error.message));
     }),
 );
 api.onOpenView((view) => {
-  if (!['settings', 'friends', 'admin', 'mods', 'resourcepacks'].includes(view)) return;
+  if (!['settings', 'friends', 'admin', 'mods', 'resourcepacks', 'voice'].includes(view)) return;
   const tab = $(`[data-view="${view}"]`);
   if (tab && !tab.hidden) tab.click();
+});
+$('#voice-connect-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    await voiceRooms.connect($('#voice-server-url').value);
+  } catch (error) {
+    toast(error.message);
+  }
+});
+$('#voice-refresh').addEventListener('click', () => voiceRooms.refresh().catch((error) => toast(error.message)));
+$('#voice-room-list').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-voice-join]');
+  if (!button) return;
+  button.disabled = true;
+  voiceRooms.joinRoom(button.dataset.voiceJoin).catch((error) => {
+    toast(error.message);
+    button.disabled = false;
+  });
+});
+$('#voice-invite-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    await voiceRooms.joinRoom($('#voice-invite-id').value.trim(), $('#voice-invite-password').value);
+    $('#voice-invite-password').value = '';
+  } catch (error) {
+    toast(error.message);
+  }
+});
+$('#voice-room-visibility').addEventListener('change', (event) => {
+  const isPrivate = event.target.value === 'private';
+  $('#voice-password-row').hidden = !isPrivate;
+  $('#voice-room-password').required = isPrivate;
+});
+$('#voice-create-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    const isPublic = $('#voice-room-visibility').value === 'public';
+    await voiceRooms.createRoom({
+      name: $('#voice-room-name').value,
+      public: isPublic,
+      password: isPublic ? '' : $('#voice-room-password').value,
+      maxMembers: Number($('#voice-room-capacity').value),
+    });
+    $('#voice-room-name').value = '';
+    $('#voice-room-password').value = '';
+  } catch (error) {
+    toast(error.message);
+  }
+});
+action('#voice-leave', () => voiceRooms.leaveRoom());
+action('#voice-disconnect', () => voiceRooms.disconnect());
+action('#voice-lobby-disconnect', () => voiceRooms.disconnect());
+action('#voice-mute', () => voiceRooms.toggleMute());
+action('#voice-deafen', () => voiceRooms.toggleDeafen());
+$('#voice-chat-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const input = $('#voice-chat-input');
+  const message = input.value;
+  if (!message.trim()) return;
+  try {
+    await voiceRooms.sendChat(voiceState.channel, message);
+    input.value = '';
+  } catch (error) {
+    toast(error.message);
+  }
+});
+$('.voice-chat-tabs').addEventListener('click', (event) => {
+  const channel = event.target.closest('[data-voice-channel]')?.dataset.voiceChannel;
+  if (channel) voiceRooms.setChannel(channel);
+});
+$('#voice-copy-id').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('#voice-room-id').textContent);
+    toast('ID de la sala copiado. Comparte la contraseña por separado.');
+  } catch {
+    toast('No se pudo copiar el ID de la sala.');
+  }
 });
 function renderProfile() {
   const microsoft = settings.mode === 'microsoft' && account,
@@ -1369,6 +1544,7 @@ window.addEventListener('pagehide', () => {
     cosmeticStorageUrl = data.cosmeticStorageUrl;
     settingsStore = createSettingsStore(data.settings, api.saveSettings);
     settings = settingsStore.value;
+    $('#voice-server-url').value = data.voiceServerUrl || 'https://primarix-voice.onrender.com';
     api.onSettingsUpdated(async (updated) => {
       try {
         const profileChanged = settings.nickname !== updated.nickname || settings.mode !== updated.mode;
