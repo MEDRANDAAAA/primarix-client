@@ -69,8 +69,7 @@ public class AntagonHud {
             PROFILE_ADD_OFFLINE_ID = 0xA730,
             PROFILE_USE_OFFLINE_ID = 0xA731,
             PROFILE_ADD_MICROSOFT_ID = 0xA732,
-            PROFILE_REMOVE_ID = 0xA740,
-            PROFILE_CANCEL_INPUT_ID = 0xA752;
+            PROFILE_REMOVE_ID = 0xA740;
     private static final File UI_REQUEST = new File("antagon-ui-request.txt");
     private static final File PROFILE_REQUEST = new File("antagon-profile-request.txt");
     private static final File PROFILE_SNAPSHOT = new File("antagon-accounts.txt");
@@ -812,7 +811,7 @@ public class AntagonHud {
                                 6,
                                 (height
                                                 - rowY
-                                                - Math.round((profileInputActive ? 130 : 94) * scale))
+                                                - Math.round((profileInputActive ? 105 : 94) * scale))
                                         / rowHeight));
         if (profileMicrosoftNames.contains(profileNickname))
             profileSelectorEntries.add(
@@ -868,15 +867,13 @@ public class AntagonHud {
         }
         int addOfflineY = rowY + shown * rowHeight;
         int buttonHeight = Math.max(1, Math.round(20 * scale));
-        int textFieldY = Math.max(1, Math.round(2 * scale));
         int saveWidth = Math.max(40, Math.round(58 * scale));
         if (profileInputActive) {
             int inputX = bounds[0] + inset;
             int inputY = addOfflineY + Math.max(1, (rowHeight - buttonHeight) / 2);
-            int textY = inputY + textFieldY;
             int inputWidth = contentWidth - saveWidth - gap;
             if (profileTextField == null) {
-                profileTextField = createProfileTextField(inputX, textY, inputWidth, buttonHeight);
+                profileTextField = createProfileTextField(inputX, inputY, inputWidth, buttonHeight);
                 call(profileTextField, new String[] {"func_146203_f", "setMaxStringLength"}, 16);
                 call(profileTextField, new String[] {"func_146185_a", "setEnableBackgroundDrawing"}, false);
                 call(profileTextField, new String[] {"func_146193_g", "setTextColor"}, WHITE);
@@ -885,7 +882,7 @@ public class AntagonHud {
                 call(profileTextField, new String[] {"func_146202_e", "setCursorPositionEnd"});
             } else {
                 setField(profileTextField, inputX, "field_146209_f", "xPosition");
-                setField(profileTextField, textY, "field_146210_g", "yPosition");
+                setField(profileTextField, inputY, "field_146210_g", "yPosition");
                 setField(profileTextField, inputWidth, "field_146218_h", "width");
                 setField(profileTextField, buttonHeight, "field_146219_i", "height");
             }
@@ -896,14 +893,6 @@ public class AntagonHud {
                             inputY,
                             saveWidth,
                             "GUARDAR",
-                            scale));
-            buttons.add(
-                    newProfileSelectorButton(
-                            PROFILE_CANCEL_INPUT_ID,
-                            bounds[0] + inset,
-                            addOfflineY + rowHeight,
-                            contentWidth,
-                            "VOLVER",
                             scale));
         } else {
             profileTextField = null;
@@ -920,7 +909,7 @@ public class AntagonHud {
                 newProfileSelectorButton(
                         PROFILE_ADD_MICROSOFT_ID,
                         bounds[0] + inset,
-                        addOfflineY + rowHeight * (profileInputActive ? 2 : 1),
+                        addOfflineY + rowHeight,
                         contentWidth,
                         "+ A\u00d1ADIR CUENTA MICROSOFT",
                         scale));
@@ -1239,10 +1228,7 @@ public class AntagonHud {
                         Math.max(0, profileSelectorEntries.size() - profileScrollOffset));
         int height =
                 Math.round(
-                        (30
-                                        + shown * 25
-                                        + (profileInputActive ? 75 : 50))
-                                * scale);
+                        (30 + shown * 25 + 50) * scale);
         rect(bounds[0] + margin / 2, panelY + margin / 2, bounds[2], height, 0xA0000000);
         rect(bounds[0], panelY, bounds[2], height, 0xF4191C23);
         outline(bounds[0], panelY, bounds[2], height, 0xFF55505C);
@@ -1459,12 +1445,6 @@ public class AntagonHud {
             drawCenteredMenuText(label, x + width / 2f, y, height, 0xFF28161D);
             return;
         }
-        if (id == PROFILE_CANCEL_INPUT_ID) {
-            rect(x, y, width, height, hover ? 0xFF35313A : 0xFF24232A);
-            outline(x, y, width, height, 0xFF494650);
-            drawCenteredMenuText(label, x + width / 2f, y, height, hover ? WHITE : 0xFFB7BAC2);
-            return;
-        }
         if (id == PROFILE_ADD_OFFLINE_ID || id == PROFILE_ADD_MICROSOFT_ID) {
             int edge = id == PROFILE_ADD_MICROSOFT_ID ? 0xFF628FB8 : accent();
             rect(x, y, width, height, hover ? 0xFF34313B : 0xFF24232A);
@@ -1620,11 +1600,6 @@ public class AntagonHud {
                         profileTextField = null;
                         refreshProfileSelectorButtons(screen);
                     } else profileNotice = "Usa de 3 a 16 letras, numeros o _.";
-                    event.setCanceled(true);
-                    return;
-                }
-                if (id == PROFILE_CANCEL_INPUT_ID) {
-                    cancelProfileInput(screen);
                     event.setCanceled(true);
                     return;
                 }
