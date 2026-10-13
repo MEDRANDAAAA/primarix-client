@@ -5,6 +5,9 @@ const { atomicWrite } = require('./files.cjs');
 
 const NICKNAME = /^[A-Za-z0-9_]{3,16}$/;
 const PROFILE_FILE = 'antagon-profile.json';
+const LAST_GAME_PROFILE_FILE = 'last-game-profile.json';
+const GAME_PROCESS_FILE = 'antagon-game-process.json';
+const INSTANCE_DIRECTORY = /^\d+-[a-f0-9]{8}$/;
 
 function instanceSettings(settings, profile) {
   const clean = validateSettings(settings);
@@ -28,6 +31,85 @@ function writeInstanceProfile(gameDir, settings) {
   const clean = validateSettings(settings);
   const target = path.join(gameDir, PROFILE_FILE);
   atomicWrite(target, JSON.stringify({ nickname: clean.nickname, mode: clean.mode }));
+}
+
+function lastGameDirectory(root) {
+  const stateFile = path.join(root, LAST_GAME_PROFILE_FILE);
+  try {
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    if (state?.directory === 'minecraft') return path.join(root, 'minecraft');
+    const match = /^instances\/([^/]+)$/.exec(state?.directory || '');
+    if (match && INSTANCE_DIRECTORY.test(match[1])) {
+      const gameDir = path.join(root, 'instances', match[1]);
+      if (fs.existsSync(path.join(gameDir, 'options.txt'))) return gameDir;
+      return path.join(root, 'minecraft');
+    }
+    throw Error('El perfil de juego guardado no es válido.');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  const profiles = [path.join(root, 'minecraft')];
+  const instancesDirectory = path.join(root, 'instances');
+  if (fs.existsSync(instancesDirectory)) {
+    profiles.push(
+      ...fs
+        .readdirSync(instancesDirectory, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && INSTANCE_DIRECTORY.test(entry.name))
+        .map((entry) => path.join(instancesDirectory, entry.name)),
+    );
+  }
+  return (
+    profiles
+      .filter((gameDir) => fs.existsSync(path.join(gameDir, 'options.txt')))
+      .map((gameDir) => ({
+        gameDir,
+        modifiedAt: fs.statSync(path.join(gameDir, 'options.txt')).mtimeMs,
+      }))
+      .sort((left, right) => right.modifiedAt - left.modifiedAt)[0]?.gameDir || path.join(root, 'minecraft')
+  );
+}
+
+function rememberLastGameDirectory(root, gameDir) {
+  const relative = path.relative(path.resolve(root), path.resolve(gameDir)).replace(/\\/g, '/');
+  if (relative !== 'minecraft' && !/^instances\/\d+-[a-f0-9]{8}$/.test(relative))
+    throw Error('No se puede guardar una carpeta de juego fuera del perfil Primarix.');
+  atomicWrite(path.join(root, LAST_GAME_PROFILE_FILE), JSON.stringify({ directory: relative }));
+}
+
+function gameProfileIsRunning(gameDir) {
+  let record;
+  try {
+    record = JSON.parse(fs.readFileSync(path.join(gameDir, GAME_PROCESS_FILE), 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+  if (!Number.isSafeInteger(record?.pid) || record.pid <= 0)
+    throw Error('El registro del proceso de Minecraft no es válido.');
+  try {
+    process.kill(record.pid, 0);
+    return true;
+  } catch (error) {
+    if (error.code === 'ESRCH') return false;
+    if (error.code === 'EPERM') return true;
+    throw error;
+  }
+}
+
+function rememberGameProcess(gameDir, pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) throw Error('El proceso de Minecraft no es válido.');
+  atomicWrite(path.join(gameDir, GAME_PROCESS_FILE), JSON.stringify({ pid }));
+}
+
+function forgetGameProcess(gameDir, pid) {
+  const processFile = path.join(gameDir, GAME_PROCESS_FILE);
+  try {
+    const record = JSON.parse(fs.readFileSync(processFile, 'utf8'));
+    if (record?.pid === pid) fs.unlinkSync(processFile);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
 }
 
 function snapshot(settings, message = '', premiumNicknames = []) {
@@ -107,4 +189,15 @@ function currentNickname(nickname) {
   return NICKNAME.test(nickname || '');
 }
 
-module.exports = { applyCommand, instanceSettings, readInstanceProfile, snapshot, writeInstanceProfile };
+module.exports = {
+  applyCommand,
+  forgetGameProcess,
+  gameProfileIsRunning,
+  instanceSettings,
+  lastGameDirectory,
+  readInstanceProfile,
+  rememberGameProcess,
+  rememberLastGameDirectory,
+  snapshot,
+  writeInstanceProfile,
+};

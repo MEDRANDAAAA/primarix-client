@@ -17,7 +17,13 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { Auth } = require('msmc');
-const { Runtime, cloneGameProfile, parseResourcePacks, updateResourcePackOptions } = require('./runtime.cjs');
+const {
+  Runtime,
+  cloneGameProfile,
+  parseResourcePacks,
+  syncResourcePacks,
+  updateResourcePackOptions,
+} = require('./runtime.cjs');
 const { atomicWrite: atomic, readTail } = require('./files.cjs');
 const { importResourcePack, listInstalledResourcePacks } = require('./resourcepacks.cjs');
 const { assertForgeMod } = require('./mod-archive.cjs');
@@ -30,8 +36,13 @@ const { syncGameAccent } = require('./game-theme.cjs');
 const { DEFAULTS, validateSettings, offlineAccount } = require('./settings.cjs');
 const {
   applyCommand: applyGameProfileCommand,
+  forgetGameProcess,
+  gameProfileIsRunning,
   instanceSettings: gameInstanceSettings,
+  lastGameDirectory,
+  rememberGameProcess,
   readInstanceProfile,
+  rememberLastGameDirectory,
   snapshot: gameProfilesSnapshot,
   writeInstanceProfile,
 } = require('./game-profiles.cjs');
@@ -625,14 +636,18 @@ async function startGame(server, target = null) {
       message: isGameRunning() ? 'Preparando otra instancia' : 'Preparando Minecraft',
       percent: 0,
     });
-    let gameDir = target?.gameDir || baseGameDir;
+    const existingGameIsRunning = isGameRunning();
+    let gameDir = target?.gameDir || (existingGameIsRunning ? baseGameDir : lastGameDirectory(root));
     let gameRuntime = target?.runtime || baseRuntime;
-    if (!target && isGameRunning()) {
+    const selectedProfileIsRunning = !target && !existingGameIsRunning && gameProfileIsRunning(gameDir);
+    if (!target && (existingGameIsRunning || selectedProfileIsRunning)) {
       const id = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+      const sourceGameDir = selectedProfileIsRunning ? gameDir : runtime.game;
       gameDir = path.join(root, 'instances', id);
-      await cloneGameProfile(runtime.game, gameDir);
+      await cloneGameProfile(sourceGameDir, gameDir);
       gameRuntime = new Runtime(root, assets, emit, gameDir);
     }
+    await syncResourcePacks(baseGameDir, gameDir);
     let instanceProfile = readInstanceProfile(gameDir);
     if (!instanceProfile) {
       writeInstanceProfile(gameDir, settings);
@@ -672,12 +687,24 @@ async function startGame(server, target = null) {
         accounts.map((saved) => saved.name),
       ),
     );
+    if (!target) rememberLastGameDirectory(root, gameDir);
     const result = await gameRuntime.launch(gameSettings, active, { server, admin: access.isAdmin });
+    try {
+      rememberGameProcess(gameDir, result.pid);
+    } catch (error) {
+      console.error('[PRIMARIX] No se pudo registrar el proceso de Minecraft:', error.message);
+    }
     const id = gameDir === baseGameDir ? 'main' : path.basename(gameDir);
     gameInstances.set(id, { id, gameDir, runtime: gameRuntime });
     runtime = gameRuntime;
     gameRuntime.child?.once('close', () => {
       persistResourcePackSelection(gameDir);
+      try {
+        forgetGameProcess(gameDir, result.pid);
+        rememberLastGameDirectory(root, gameDir);
+      } catch (error) {
+        console.error('[PRIMARIX] No se pudo guardar el estado del perfil de Minecraft:', error.message);
+      }
       setTimeout(gameActivity, 500);
     });
     gameCosmetics();

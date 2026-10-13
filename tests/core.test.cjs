@@ -4,6 +4,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { zipSync } = require('fflate');
+const {
+  forgetGameProcess,
+  gameProfileIsRunning,
+  lastGameDirectory,
+  rememberGameProcess,
+  rememberLastGameDirectory,
+} = require('../electron/game-profiles.cjs');
 const { validateSettings, offlineAccount } = require('../electron/settings.cjs');
 const {
   allowed,
@@ -15,6 +22,7 @@ const {
   parseResourcePacks,
   updateResourcePackOptions,
   cloneGameProfile,
+  syncResourcePacks,
 } = require('../electron/runtime.cjs');
 test('Minecraft instances extract native libraries into separate game directories', async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'primarix-instance-natives-'));
@@ -104,6 +112,33 @@ test('selected resource packs persist and preserve the Primarix pack setting', (
   );
   assert.deepEqual(parseResourcePacks(deduplicated), ['vanilla', 'file/Primarix Glass']);
 });
+test('the last game profile is restored across launcher restarts', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'primarix-last-profile-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const base = path.join(root, 'minecraft');
+  const instance = path.join(root, 'instances', '1791862536848-0c8fbff5');
+  fs.mkdirSync(base, { recursive: true });
+  fs.mkdirSync(instance, { recursive: true });
+  fs.writeFileSync(path.join(base, 'options.txt'), 'resourcePacks:[]\n');
+  fs.writeFileSync(path.join(instance, 'options.txt'), 'resourcePacks:["Custom.zip"]\n');
+  fs.utimesSync(path.join(base, 'options.txt'), new Date(2000), new Date(2000));
+  fs.utimesSync(path.join(instance, 'options.txt'), new Date(3000), new Date(3000));
+  assert.equal(lastGameDirectory(root), instance);
+  fs.writeFileSync(path.join(base, 'options.txt'), 'resourcePacks:["vanilla"]\n');
+  fs.utimesSync(path.join(base, 'options.txt'), new Date(4000), new Date(4000));
+  assert.equal(lastGameDirectory(root), base);
+
+  rememberLastGameDirectory(root, base);
+  assert.equal(lastGameDirectory(root), base);
+  rememberLastGameDirectory(root, instance);
+  assert.equal(lastGameDirectory(root), instance);
+  assert.throws(() => rememberLastGameDirectory(root, path.join(root, 'outside')));
+
+  rememberGameProcess(instance, process.pid);
+  assert.equal(gameProfileIsRunning(instance), true);
+  forgetGameProcess(instance, process.pid);
+  assert.equal(gameProfileIsRunning(instance), false);
+});
 test('additional game profiles copy preferences and mods without sharing worlds or control files', async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'primarix-instance-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -124,6 +159,21 @@ test('additional game profiles copy preferences and mods without sharing worlds 
   assert.equal(fs.readFileSync(path.join(destination, 'resourcepacks', 'Custom.zip'), 'utf8'), 'pack');
   assert.equal(fs.existsSync(path.join(destination, 'saves')), false);
   assert.equal(fs.existsSync(path.join(destination, 'antagon-ui-cmd-1.txt')), false);
+});
+test('reused game profiles receive newly installed resource packs without replacing their files', async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'primarix-resourcepack-sync-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const source = path.join(directory, 'main');
+  const destination = path.join(directory, 'instance');
+  fs.mkdirSync(path.join(source, 'resourcepacks'), { recursive: true });
+  fs.mkdirSync(path.join(destination, 'resourcepacks'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'resourcepacks', 'New.zip'), 'new pack');
+  fs.writeFileSync(path.join(source, 'resourcepacks', 'Same.zip'), 'main copy');
+  fs.writeFileSync(path.join(destination, 'resourcepacks', 'Same.zip'), 'instance copy');
+
+  await syncResourcePacks(source, destination);
+  assert.equal(fs.readFileSync(path.join(destination, 'resourcepacks', 'New.zip'), 'utf8'), 'new pack');
+  assert.equal(fs.readFileSync(path.join(destination, 'resourcepacks', 'Same.zip'), 'utf8'), 'instance copy');
 });
 test('library rules honor allow and deny on macOS', () => {
   assert.equal(allowed({}, 'osx'), true);

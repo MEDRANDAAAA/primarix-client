@@ -167,8 +167,8 @@ async function main() {
       throw Error('No se completó la prueba de los menús originales de AnnthModCD.');
     if (!logfile.includes('[ANTAGON TEST] AnnthModCD HUD panels clamped to screen'))
       throw Error('Los paneles de cooldown/armadura no se limitaron al tamaño de pantalla.');
-    if (!logfile.includes('[ANTAGON TEST] AnnthModCD cooldown registration saved'))
-      throw Error('No se guardó el cooldown de prueba del mod original.');
+    if (!logfile.includes('[ANTAGON TEST] AnnthModCD cooldown and heal registrations reload from disk'))
+      throw Error('No se restauraron los cooldowns de prueba después de recargar el archivo.');
     if (!logfile.includes('[ANTAGON TEST] Rapid item switching confirmed all 12 registered cooldowns'))
       throw Error('No se confirmaron todas las recargas al cambiar rápidamente entre objetos.');
     const cooldownData = await fs.stat(path.join(root, 'minecraft/config/rpgclient-cooldowns.dat')).catch(() => null);

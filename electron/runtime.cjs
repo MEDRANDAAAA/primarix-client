@@ -548,6 +548,15 @@ async function cloneGameProfile(source, destination) {
     if (fs.existsSync(from)) await fsp.cp(from, path.join(destination, directory), { recursive: true, force: true });
   }
 }
+async function syncResourcePacks(sourceGameDir, destinationGameDir) {
+  if (path.resolve(sourceGameDir) === path.resolve(destinationGameDir)) return;
+  const source = path.join(sourceGameDir, 'resourcepacks');
+  if (!fs.existsSync(source)) return;
+  await fsp.cp(source, path.join(destinationGameDir, 'resourcepacks'), {
+    recursive: true,
+    force: false,
+  });
+}
 module.exports = {
   Runtime,
   download,
@@ -563,4 +572,5 @@ module.exports = {
   parseResourcePacks,
   updateResourcePackOptions,
   cloneGameProfile,
+  syncResourcePacks,
 };

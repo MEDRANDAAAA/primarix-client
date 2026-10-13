@@ -18,6 +18,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Base64;
 import java.util.regex.Pattern;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.util.UUID;
 
 public final class CooldownManager {
     private static final String DEFAULT_INSTANCE = "Principal";
@@ -310,13 +314,13 @@ public final class CooldownManager {
         if (loaded) {
             return;
         }
-        loaded = true;
         INSTANCES.clear();
         ABSORPTIONS.clear();
         HEALS.clear();
         File file = storageFile();
         if (!file.isFile()) {
             createEmptyInstance(DEFAULT_INSTANCE);
+            loaded = true;
             dataRevision++;
             return;
         }
@@ -347,10 +351,13 @@ public final class CooldownManager {
                 INSTANCES.put(DEFAULT_INSTANCE, readEntries(root));
                 activeInstance = DEFAULT_INSTANCE;
             }
-        } catch (Exception ignored) {
+        } catch (Exception error) {
             INSTANCES.clear();
             ABSORPTIONS.clear();
             HEALS.clear();
+            throw new IllegalStateException(
+                    "No se pudieron cargar los cooldowns guardados en " + file.getAbsolutePath(),
+                    error);
         }
         if (INSTANCES.isEmpty()) {
             createEmptyInstance(DEFAULT_INSTANCE);
@@ -366,6 +373,7 @@ public final class CooldownManager {
                 HEALS.put(name, new LinkedHashMap<String, CooldownEntry>());
             }
         }
+        loaded = true;
         dataRevision++;
         if (migrateExistingEntries) {
             migrateExistingEntriesToAbsorptions();
@@ -396,20 +404,25 @@ public final class CooldownManager {
         root.setTag("instances", instances);
         root.setString("activeInstance", activeInstance);
         root.setBoolean("categoriesMigrated", true);
+        File temporary = new File(file.getParentFile(),
+                file.getName() + "." + UUID.randomUUID().toString() + ".tmp");
         try {
-            File temporary = new File(file.getParentFile(), file.getName() + ".tmp");
             CompressedStreamTools.write(root, temporary);
-            if (file.exists() && !file.delete()) {
-                lastSaveSuccessful = false;
-                return;
-            }
-            if (!temporary.renameTo(file)) {
-                lastSaveSuccessful = false;
-                return;
+            try {
+                Files.move(temporary.toPath(), file.toPath(),
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException error) {
+                Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
             lastSaveSuccessful = file.isFile() && file.length() > 0L;
         } catch (IOException ignored) {
             lastSaveSuccessful = false;
+        } finally {
+            try {
+                Files.deleteIfExists(temporary.toPath());
+            } catch (IOException ignored) {
+                lastSaveSuccessful = false;
+            }
         }
     }
 

@@ -3643,7 +3643,36 @@ public class AntagonHud {
         if (!saved) {
             throw new IllegalStateException("No se guardó el cooldown de prueba en el perfil aislado.");
         }
-        System.out.println("[ANTAGON TEST] AnnthModCD cooldown registration saved");
+        Field loaded = managerClass.getDeclaredField("loaded");
+        loaded.setAccessible(true);
+        loaded.setBoolean(null, false);
+        invoke(managerClass, null, new String[] {"load"});
+        if (!hasCooldownEntry(managerClass, null, "smoke_test")) {
+            throw new IllegalStateException("No se restauró el cooldown guardado después de recargar el archivo.");
+        }
+        Class<?> categoryClass = Class.forName("com.rpgclient.cooldown.CooldownManager$Category");
+        Object healCategory = categoryClass.getField("HEAL").get(null);
+        if (!hasCooldownEntry(managerClass, healCategory, "smoke_heal")) {
+            throw new IllegalStateException("No se restauró el heal guardado después de recargar el archivo.");
+        }
+        System.out.println("[ANTAGON TEST] AnnthModCD cooldown and heal registrations reload from disk");
+    }
+
+    private boolean hasCooldownEntry(Class<?> managerClass, Object category, String id)
+            throws Exception {
+        List<?> entries =
+                category == null
+                        ? (List<?>) invoke(managerClass, null, new String[] {"getEntries"})
+                        : (List<?>)
+                                invoke(
+                                        managerClass,
+                                        null,
+                                        new String[] {"getEntries"},
+                                        category);
+        for (Object entry : entries) {
+            if (id.equals(invoke(entry.getClass(), entry, new String[] {"getId"}))) return true;
+        }
+        return false;
     }
 
     private void verifyCooldownHudBounds(Object mc) throws Exception {
