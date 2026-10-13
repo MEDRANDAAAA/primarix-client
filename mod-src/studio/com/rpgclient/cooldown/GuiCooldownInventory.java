@@ -32,14 +32,14 @@ public class GuiCooldownInventory extends GuiScreen {
     private static final int SLOT = 18;
     private static final int COLUMNS = 9;
     private static final int ROWS = 4;
-    private static final int READY_SLOT_COLOR = 0xFF35D06F;
-    private static final int COOLDOWN_SLOT_COLOR = 0xFFFF5151;
     private static boolean overlayEnabled;
     private static boolean armorOverlayEnabled;
     private static int cooldownLeft = Integer.MIN_VALUE;
     private static int cooldownTop = Integer.MIN_VALUE;
     private static int armorLeft = Integer.MIN_VALUE;
     private static int armorTop = Integer.MIN_VALUE;
+    private static int positionsWidth = -1;
+    private static int positionsHeight = -1;
     private static float hudOpacity = 1.0F;
     private static final ItemStack[] cachedItems = new ItemStack[36];
     private static final CooldownEntry[] cachedCooldownEntries = new CooldownEntry[36];
@@ -53,6 +53,7 @@ public class GuiCooldownInventory extends GuiScreen {
     private static ScaledResolution cachedResolution;
     private static int lastWidth;
     private static int lastHeight;
+    private static int lastGuiScale = Integer.MIN_VALUE;
     private int left;
     private int top;
 
@@ -176,7 +177,10 @@ public class GuiCooldownInventory extends GuiScreen {
         armorLeft = newArmorLeft;
         armorTop = newArmorTop;
         hudOpacity = Math.max(0.2F, Math.min(1.0F, newOpacity / 100.0F));
-        clampPositions(new ScaledResolution(Minecraft.getMinecraft()));
+        ScaledResolution resolution = new ScaledResolution(Minecraft.getMinecraft());
+        clampPositions(resolution);
+        positionsWidth = resolution.getScaledWidth();
+        positionsHeight = resolution.getScaledHeight();
         saveLayout();
     }
 
@@ -186,6 +190,23 @@ public class GuiCooldownInventory extends GuiScreen {
 
     private static void ensurePositions(ScaledResolution resolution) {
         if (cooldownLeft != Integer.MIN_VALUE && armorLeft != Integer.MIN_VALUE) {
+            int width = resolution.getScaledWidth();
+            int height = resolution.getScaledHeight();
+            if (width != positionsWidth || height != positionsHeight) {
+                int previousCooldownLeft = cooldownLeft;
+                int previousCooldownTop = cooldownTop;
+                int previousArmorLeft = armorLeft;
+                int previousArmorTop = armorTop;
+                clampPositions(resolution);
+                positionsWidth = width;
+                positionsHeight = height;
+                if (cooldownLeft != previousCooldownLeft
+                        || cooldownTop != previousCooldownTop
+                        || armorLeft != previousArmorLeft
+                        || armorTop != previousArmorTop) {
+                    saveLayout();
+                }
+            }
             return;
         }
         cooldownLeft = 4;
@@ -221,19 +242,17 @@ public class GuiCooldownInventory extends GuiScreen {
         } catch (Exception ignored) {
         }
         clampPositions(resolution);
+        positionsWidth = resolution.getScaledWidth();
+        positionsHeight = resolution.getScaledHeight();
     }
 
     private static void clampPositions(ScaledResolution resolution) {
         int width = resolution.getScaledWidth();
         int height = resolution.getScaledHeight();
-        cooldownLeft = Math.max(0, Math.min(cooldownLeft,
-                Math.max(0, width - getCooldownPanelWidth())));
-        cooldownTop = Math.max(0, Math.min(cooldownTop,
-                Math.max(0, height - getCooldownPanelHeight())));
-        armorLeft = Math.max(0, Math.min(armorLeft,
-                Math.max(0, width - getArmorPanelWidth())));
-        armorTop = Math.max(0, Math.min(armorTop,
-                Math.max(0, height - getArmorPanelHeight())));
+        cooldownLeft = HudBounds.clampPosition(cooldownLeft, width, getCooldownPanelWidth());
+        cooldownTop = HudBounds.clampPosition(cooldownTop, height, getCooldownPanelHeight());
+        armorLeft = HudBounds.clampPosition(armorLeft, width, getArmorPanelWidth());
+        armorTop = HudBounds.clampPosition(armorTop, height, getArmorPanelHeight());
     }
 
     private static void saveLayout() {
@@ -341,6 +360,10 @@ public class GuiCooldownInventory extends GuiScreen {
                 GuiContainer.class, container, "guiLeft", "field_147003_i");
         int guiTop = ReflectionHelper.getPrivateValue(
                 GuiContainer.class, container, "guiTop", "field_147009_r");
+        int guiWidth = ReflectionHelper.getPrivateValue(
+                GuiContainer.class, container, "xSize", "field_146999_f");
+        int guiHeight = ReflectionHelper.getPrivateValue(
+                GuiContainer.class, container, "ySize", "field_147000_g");
         HudRenderState renderState = new HudRenderState();
         GlStateManager.pushMatrix();
         try {
@@ -354,10 +377,24 @@ public class GuiCooldownInventory extends GuiScreen {
                 if (slot.inventory != mc.thePlayer.inventory) {
                     continue;
                 }
-                CooldownEntry cooldown = getInventoryCooldownEntry(slot.getSlotIndex());
+                if (!HudBounds.containsSlot(
+                        guiWidth,
+                        guiHeight,
+                        slot.xDisplayPosition,
+                        slot.yDisplayPosition,
+                        SLOT)) {
+                    continue;
+                }
+                ItemStack stack = slot.getStack();
+                int slotX = guiLeft + slot.xDisplayPosition;
+                int slotY = guiTop + slot.yDisplayPosition;
+                if (ToolsManager.isRegistered(stack)) {
+                    drawToolSlot(slotX, slotY);
+                    continue;
+                }
+                CooldownEntry cooldown = CooldownManager.findInAnyCategory(stack);
                 if (cooldown != null) {
-                    drawSlotCooldown(guiLeft + slot.xDisplayPosition,
-                            guiTop + slot.yDisplayPosition, cooldown);
+                    drawSlotCooldown(slotX, slotY, cooldown);
                 }
             }
         } finally {
@@ -390,7 +427,7 @@ public class GuiCooldownInventory extends GuiScreen {
     }
 
     private static void drawSlotCooldown(int x, int y, CooldownEntry entry) {
-        int color = entry.isOnCooldown() ? COOLDOWN_SLOT_COLOR : READY_SLOT_COLOR;
+        int color = CooldownVisuals.slotColor(entry.isOnCooldown(), isHealEntry(entry));
         int tint = 0x30000000 | (color & 0x00FFFFFF);
         Gui.drawRect(x, y, x + SLOT, y + SLOT, tint);
         Gui.drawRect(x, y + SLOT - 1, x + SLOT, y + SLOT, color);
@@ -409,9 +446,22 @@ public class GuiCooldownInventory extends GuiScreen {
         }
         Gui.drawRect(x + 2, y, x + SLOT - 2, y + 1, 0xB0000000);
         if (progressWidth > 0) {
-            int color = entry.isOnCooldown() ? COOLDOWN_SLOT_COLOR : READY_SLOT_COLOR;
+            int color = CooldownVisuals.slotColor(entry.isOnCooldown(), isHealEntry(entry));
             Gui.drawRect(x + 2, y, x + 2 + progressWidth, y + 1, color);
         }
+    }
+
+    private static boolean isHealEntry(CooldownEntry entry) {
+        return entry != null
+                && CooldownManager.find(entry.getSample(), CooldownManager.Category.HEAL) == entry;
+    }
+
+    private static void drawToolSlot(int x, int y) {
+        Gui.drawRect(x, y, x + SLOT, y + SLOT, 0x35E05AC8);
+        Gui.drawRect(x, y, x + SLOT, y + 1, 0xFFE05AC8);
+        Gui.drawRect(x, y + SLOT - 1, x + SLOT, y + SLOT, 0xFFE05AC8);
+        Gui.drawRect(x, y + 1, x + 1, y + SLOT - 1, 0xFFE05AC8);
+        Gui.drawRect(x + SLOT - 1, y + 1, x + SLOT, y + SLOT - 1, 0xFFE05AC8);
     }
 
     private static CooldownEntry getInventoryCooldownEntry(int inventorySlot) {
@@ -432,16 +482,20 @@ public class GuiCooldownInventory extends GuiScreen {
     }
 
     private static void renderHud(Minecraft mc) {
-        if (mc.thePlayer == null) {
+        if (mc.thePlayer == null
+                || (mc.currentScreen != null && !(mc.currentScreen instanceof GuiHudOverlay))) {
             return;
         }
         currentFrame++;
         int displayWidth = mc.displayWidth;
         int displayHeight = mc.displayHeight;
-        if (cachedResolution == null || displayWidth != lastWidth || displayHeight != lastHeight) {
+        int guiScale = mc.gameSettings.guiScale;
+        if (cachedResolution == null || displayWidth != lastWidth
+                || displayHeight != lastHeight || guiScale != lastGuiScale) {
             cachedResolution = new ScaledResolution(mc);
             lastWidth = displayWidth;
             lastHeight = displayHeight;
+            lastGuiScale = guiScale;
         }
         ScaledResolution resolution = cachedResolution;
         int gridWidth = COLUMNS * SLOT;
@@ -554,25 +608,12 @@ public class GuiCooldownInventory extends GuiScreen {
     private static int registeredItemColor(boolean isToolItem, CooldownEntry cooldownEntry,
             CooldownEntry absorptionEntry, CooldownEntry healEntry,
             int emptyColor, int readyColor, int cooldownColor) {
-        if (isToolItem) return 0xB0E05AC8;
-        if (absorptionEntry != null) {
-            return cooldownColor(absorptionEntry, 0xB020B040, 0xB020B040, cooldownColor);
-        }
-        if (healEntry != null) {
-            return cooldownColor(healEntry, 0xB020B040, 0xB020B040, cooldownColor);
-        }
-        return cooldownColor(cooldownEntry, emptyColor, readyColor, cooldownColor);
-    }
-
-    private static int cooldownColor(CooldownEntry entry, int emptyColor,
-            int readyColor, int cooldownColor) {
-        if (entry == null) {
-            return emptyColor;
-        }
-        if (!entry.isOnCooldown()) {
-            return readyColor;
-        }
-        return cooldownColor;
+        CooldownEntry entry = absorptionEntry != null ? absorptionEntry
+                : healEntry != null ? healEntry : cooldownEntry;
+        return CooldownVisuals.registeredItemColor(isToolItem, entry != null,
+                absorptionEntry != null, healEntry != null,
+                entry != null && entry.isOnCooldown(),
+                emptyColor, readyColor, cooldownColor);
     }
 
     @Override

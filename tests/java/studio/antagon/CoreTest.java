@@ -1,5 +1,8 @@
 package studio.antagon;
 
+import com.rpgclient.cooldown.CooldownVisuals;
+import com.rpgclient.cooldown.HudBounds;
+
 public final class CoreTest {
     private static class Parent {
         private float amount = 3f;
@@ -88,6 +91,27 @@ public final class CoreTest {
         check(EffectDisplay.rowHeight(220, 10, 24) == 22f);
         check(EffectDisplay.rowHeight(220, 20, 24) == 11f);
         check(EffectDisplay.rowHeight(0, 10, 24) == 0);
+        check(HudBounds.clampPosition(-10, 580, 174) == 0);
+        check(HudBounds.clampPosition(500, 580, 174) == 406);
+        check(HudBounds.clampPosition(20, 100, 174) == 0);
+        check(HudBounds.containsSlot(195, 136, 88, 110, 18));
+        check(!HudBounds.containsSlot(195, 136, -175, 110, 18));
+        check(!HudBounds.containsSlot(195, 136, 188, 110, 18));
+        check(CooldownVisuals.slotColor(false, true) == 0xFF5AC8F0);
+        check(CooldownVisuals.slotColor(false, false) == 0xFF35D06F);
+        check(CooldownVisuals.slotColor(true, true) == 0xFFFF5151);
+        check(CooldownVisuals.registeredItemColor(
+                false, true, false, true, false, 0xB0606060, 0xB020B040, 0xB0D02020)
+                == CooldownVisuals.HEAL_COLOR);
+        check(CooldownVisuals.registeredItemColor(
+                false, true, false, true, true, 0xB0606060, 0xB020B040, 0xB0D02020)
+                == 0xB0D02020);
+        check(CooldownVisuals.registeredItemColor(
+                false, true, true, false, false, 0xB0606060, 0xB020B040, 0xB0D02020)
+                == CooldownVisuals.ABSORPTION_COLOR);
+        check(CooldownVisuals.registeredItemColor(
+                true, false, false, false, false, 0xB0606060, 0xB020B040, 0xB0D02020)
+                == CooldownVisuals.TOOL_COLOR);
         check("0:00".equals(EffectDisplay.duration(0)));
         check("0:01".equals(EffectDisplay.duration(1)));
         check("99:59".equals(EffectDisplay.duration(119980)));

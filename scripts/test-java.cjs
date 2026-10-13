@@ -21,6 +21,8 @@ execFileSync(
     path.join(root, 'mod-src/studio/antagon/ModuleRegistry.java'),
     path.join(root, 'mod-src/studio/antagon/DamageIndicatorDisplay.java'),
     path.join(root, 'mod-src/studio/antagon/EffectDisplay.java'),
+    path.join(root, 'mod-src/studio/com/rpgclient/cooldown/CooldownVisuals.java'),
+    path.join(root, 'mod-src/studio/com/rpgclient/cooldown/HudBounds.java'),
     path.join(root, 'tests/java/studio/antagon/CoreTest.java'),
   ],
   { stdio: 'inherit' },

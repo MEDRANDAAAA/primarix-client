@@ -3143,6 +3143,13 @@ public class AntagonHud {
                     equipSmokeArmor(mc);
                     equipSmokeCooldownItem(mc);
                     smokeCooldownCommand(mc, "/cd smoke_test");
+                    equipSmokeHealItem(mc);
+                    smokeCooldownCommand(mc, "/cd heal smoke_heal");
+                    setField(
+                            field(field(mc, "field_71439_g", "thePlayer"), "field_71071_by", "inventory"),
+                            0,
+                            "field_70461_c",
+                            "currentItem");
                     verifyCooldownSave();
                     smokeCooldownCommand(mc, "/hand on");
                     smokeCooldownCommand(mc, "/armor");
@@ -3152,6 +3159,25 @@ public class AntagonHud {
                     break;
                 case 520:
                     shot("annthmodcd-hud.png");
+                    prepareSmokeToolInventory(mc);
+                    break;
+                case 521:
+                    {
+                        Object screen = field(mc, "field_71462_r", "currentScreen");
+                        if (!Class.forName("net.minecraft.client.gui.inventory.GuiContainer")
+                                .isInstance(screen)) {
+                            throw new IllegalStateException(
+                                    "La prueba de /tools no mantuvo abierta una interfaz de inventario: "
+                                            + (screen == null ? "ninguna pantalla" : screen.getClass().getName()));
+                        }
+                        verifySmokeToolInventory(screen, mc);
+                    }
+                    break;
+                case 522:
+                    shot("annthmodcd-inventory-tools.png");
+                    call(mc, new String[] {"func_147108_a", "displayGuiScreen"}, (Object) null);
+                    break;
+                case 523:
                     System.out.println(
                             "[ANTAGON TEST] AnnthModCD original menu, cooldown menu, layout editor and HUD opened");
                     break;
@@ -3438,6 +3464,118 @@ public class AntagonHud {
                 Reflect.findField(itemsClass, new String[] {"field_151034_e", "apple"}).get(null);
         mainInventory[0] = stackClass.getConstructor(itemClass).newInstance(apple);
         setField(inventory, 0, "field_70461_c", "currentItem");
+    }
+
+    private void equipSmokeHealItem(Object mc) throws Exception {
+        Object player = field(mc, "field_71439_g", "thePlayer");
+        Object inventory = field(player, "field_71071_by", "inventory");
+        Object[] mainInventory = (Object[]) field(inventory, "field_70462_a", "mainInventory");
+        Class<?> itemClass = Class.forName("net.minecraft.item.Item");
+        Object registry =
+                Reflect.findField(itemClass, new String[] {"field_150901_e", "itemRegistry"})
+                        .get(null);
+        Object goldenApple =
+                call(
+                        registry,
+                        new String[] {"getObject"},
+                        Class.forName("net.minecraft.util.ResourceLocation")
+                                .getConstructor(String.class)
+                                .newInstance("minecraft:golden_apple"));
+        if (goldenApple == null) {
+            throw new IllegalStateException("No se encontró la manzana dorada de prueba para /cd heal.");
+        }
+        mainInventory[1] =
+                Class.forName("net.minecraft.item.ItemStack")
+                        .getConstructor(itemClass)
+                        .newInstance(goldenApple);
+        setField(inventory, 1, "field_70461_c", "currentItem");
+    }
+
+    private void prepareSmokeToolInventory(Object mc) throws Exception {
+        Class<?> toolsManager = Class.forName("com.rpgclient.cooldown.ToolsManager");
+        invoke(toolsManager, null, new String[] {"delete"}, "SmokeTools");
+        if (!((Boolean) invoke(toolsManager, null, new String[] {"create"}, "SmokeTools"))
+                .booleanValue()) {
+            throw new IllegalStateException("No se pudo crear el perfil de herramientas de prueba.");
+        }
+        Object player = field(mc, "field_71439_g", "thePlayer");
+        Object inventory = field(player, "field_71071_by", "inventory");
+        Object[] mainInventory = (Object[]) field(inventory, "field_70462_a", "mainInventory");
+        Class<?> itemClass = Class.forName("net.minecraft.item.Item");
+        Object registry =
+                Reflect.findField(itemClass, new String[] {"field_150901_e", "itemRegistry"})
+                        .get(null);
+        Object pickaxe =
+                call(
+                        registry,
+                        new String[] {"getObject"},
+                        Class.forName("net.minecraft.util.ResourceLocation")
+                                .getConstructor(String.class)
+                                .newInstance("minecraft:iron_pickaxe"));
+        if (pickaxe == null) {
+            throw new IllegalStateException("No se encontró el pico de prueba para /tools.");
+        }
+        mainInventory[2] =
+                Class.forName("net.minecraft.item.ItemStack")
+                        .getConstructor(itemClass)
+                        .newInstance(pickaxe);
+        setField(inventory, 2, "field_70461_c", "currentItem");
+        if (!((Boolean)
+                        invoke(
+                                toolsManager,
+                                null,
+                                new String[] {"addHeldItem"},
+                                "SmokeTools"))
+                .booleanValue()) {
+            throw new IllegalStateException("No se pudo registrar el objeto de prueba en /tools.");
+        }
+        openSmokeInventory(mc);
+    }
+
+    private void verifySmokeToolInventory(Object screen, Object mc) throws Exception {
+        Object player = field(mc, "field_71439_g", "thePlayer");
+        Object inventory = field(player, "field_71071_by", "inventory");
+        int guiWidth = ((Number) field(screen, "xSize", "field_146999_f")).intValue();
+        int guiHeight = ((Number) field(screen, "ySize", "field_147000_g")).intValue();
+        int matches = 0;
+        for (Object slot : (List<?>) field(field(screen, "field_147002_h", "inventorySlots"),
+                "field_75151_b", "inventorySlots")) {
+            if (field(slot, "field_75224_c", "inventory") != inventory) continue;
+            Object stack = call(slot, new String[] {"func_75211_c", "getStack"});
+            if (!((Boolean)
+                            invoke(
+                                    Class.forName("com.rpgclient.cooldown.ToolsManager"),
+                                    null,
+                                    new String[] {"isRegistered"},
+                                    stack))
+                    .booleanValue()) {
+                continue;
+            }
+            int x = ((Number) field(slot, "field_75222_d", "xDisplayPosition")).intValue();
+            int y = ((Number) field(slot, "field_75221_f", "yDisplayPosition")).intValue();
+            if (!((Boolean)
+                            invoke(
+                                    Class.forName("com.rpgclient.cooldown.HudBounds"),
+                                    null,
+                                    new String[] {"containsSlot"},
+                                    guiWidth,
+                                    guiHeight,
+                                    x,
+                                    y,
+                                    18))
+                    .booleanValue()) {
+                throw new IllegalStateException(
+                        "El item /tools quedó fuera de los límites del contenedor: "
+                                + x + "," + y + " / " + guiWidth + "x" + guiHeight);
+            }
+            matches++;
+            System.out.println(
+                    "[ANTAGON TEST] Registered /tools item is inside inventory bounds at "
+                            + x + "," + y);
+        }
+        if (matches == 0) {
+            throw new IllegalStateException("No se encontró el item /tools en las casillas del jugador.");
+        }
     }
 
     private void verifyRapidCooldownAttempts() throws Exception {

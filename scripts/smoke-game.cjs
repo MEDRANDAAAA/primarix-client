@@ -35,6 +35,7 @@ const screenshots = [
   'annthmodcd-cd-menu.png',
   'annthmodcd-layout-editor.png',
   'annthmodcd-hud.png',
+  'annthmodcd-inventory-tools.png',
 ];
 
 async function main() {
