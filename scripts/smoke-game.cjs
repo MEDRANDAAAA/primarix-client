@@ -2,7 +2,9 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const { once } = require('node:events');
-const { Runtime, offlineAccount } = require('../electron/runtime.cjs');
+const { zipSync } = require('fflate');
+const { readGameOptions, writeGameOptions } = require('../electron/game-options.cjs');
+const { Runtime, offlineAccount, parseResourcePacks } = require('../electron/runtime.cjs');
 const { DEFAULTS } = require('../electron/settings.cjs');
 const project = path.resolve(__dirname, '..');
 const root = process.env.ANTAGON_GAME_TEST_ROOT
@@ -54,6 +56,28 @@ async function main() {
     cooldownHudConfig,
     'cooldownLeft=99999\ncooldownTop=99999\narmorLeft=-99999\narmorTop=-99999\nopacity=100\n',
   );
+  const legacyPackName = '!     §3azura §8[§f16x§8].zip';
+  const legacyPackDirectory = path.join(root, 'minecraft/resourcepacks');
+  await fs.mkdir(legacyPackDirectory, { recursive: true });
+  await fs.writeFile(
+    path.join(legacyPackDirectory, legacyPackName),
+    zipSync({
+      'pack.mcmeta': Buffer.from(JSON.stringify({ pack: { pack_format: 1, description: 'Legacy name smoke' } })),
+      'assets/minecraft/textures/blocks/stone.png': Buffer.from('smoke'),
+    }),
+  );
+  const optionsFile = path.join(root, 'minecraft/options.txt');
+  let existingOptions = '';
+  try {
+    existingOptions = readGameOptions(optionsFile).text;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const legacyPackLine = `resourcePacks:${JSON.stringify([legacyPackName])}`;
+  const legacyOptions = /^resourcePacks:.*$/m.test(existingOptions)
+    ? existingOptions.replace(/^resourcePacks:.*$/m, legacyPackLine)
+    : `${existingOptions.trimEnd()}\n${legacyPackLine}\n`;
+  writeGameOptions(optionsFile, legacyOptions, 'windows-1252');
   const withOptifine = process.env.ANTAGON_TEST_OPTIFINE === '1';
   if (withOptifine) {
     const mods = path.join(root, 'minecraft/mods');
@@ -114,6 +138,13 @@ async function main() {
     const gameOptions = await fs.readFile(path.join(root, 'minecraft/options.txt'), 'utf8');
     if (!gameOptions.includes('file/Primarix Glass'))
       throw Error('El paquete Glass no quedó activado en las opciones de Minecraft.');
+    const savedOptions = readGameOptions(path.join(root, 'minecraft/options.txt'));
+    if (!parseResourcePacks(savedOptions.text).includes(legacyPackName))
+      throw Error('El paquete con símbolo § no se conservó en las opciones de Minecraft.');
+    if (!gameOptions.includes('\\u00a7'))
+      throw Error('El nombre del paquete no se guardó con escapes Unicode compatibles con Minecraft.');
+    if (!logfile.includes(legacyPackName.replace(/§/g, '�')))
+      throw Error('Minecraft no volvió a cargar el paquete con símbolo § desde el perfil.');
     for (const asset of [
       'assets/minecraft/textures/gui/widgets.png',
       'assets/minecraft/textures/font/ascii.png',

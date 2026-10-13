@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { zipSync } = require('fflate');
+const { decodeGameOptions, encodeGameOptions } = require('../electron/game-options.cjs');
 const {
   forgetGameProcess,
   gameProfileIsRunning,
@@ -111,6 +112,24 @@ test('selected resource packs persist and preserve the Primarix pack setting', (
     { pack: false },
   );
   assert.deepEqual(parseResourcePacks(deduplicated), ['vanilla', 'file/Primarix Glass']);
+});
+test('Windows resource pack names keep section-sign colors when options are read and written', () => {
+  const packName = '!     §3azura §8[§f16x§8].zip';
+  const legacyBytes = encodeGameOptions(`resourcePacks:${JSON.stringify([packName])}\n`, 'windows-1252');
+  const decoded = decodeGameOptions(legacyBytes);
+  assert.equal(decoded.encoding, 'windows-1252');
+  assert.deepEqual(parseResourcePacks(decoded.text), [packName]);
+
+  const updated = updateResourcePackOptions(decoded.text, {
+    activeResourcePacks: [packName],
+    pack: false,
+  });
+  assert.match(updated, /\\u00a7/);
+  assert.deepEqual(parseResourcePacks(updated), [packName, 'file/Primarix Glass']);
+  assert.deepEqual(encodeGameOptions(updated, decoded.encoding), encodeGameOptions(updated, 'windows-1252'));
+
+  const utf8Bytes = Buffer.from(`resourcePacks:${JSON.stringify([packName])}\n`, 'utf8');
+  assert.deepEqual(parseResourcePacks(decodeGameOptions(utf8Bytes).text), [packName]);
 });
 test('the last game profile is restored across launcher restarts', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'primarix-last-profile-'));

@@ -25,6 +25,7 @@ const {
   updateResourcePackOptions,
 } = require('./runtime.cjs');
 const { atomicWrite: atomic, readTail } = require('./files.cjs');
+const { readGameOptions, writeGameOptions } = require('./game-options.cjs');
 const { importResourcePack, listInstalledResourcePacks } = require('./resourcepacks.cjs');
 const { assertForgeMod } = require('./mod-archive.cjs');
 const { searchResourcePacks, getResourcePackDetails, downloadResourcePack } = require('./resourcepack-catalog.cjs');
@@ -607,19 +608,22 @@ async function refreshMicrosoftSession() {
 }
 function persistResourcePackSelection(gameDir) {
   try {
-    const optionText = fs.readFileSync(path.join(gameDir, 'options.txt'), 'utf8');
+    const optionText = readGameOptions(path.join(gameDir, 'options.txt')).text;
     const activeResourcePacks = parseResourcePacks(optionText);
     saveSettings({ ...settings, activeResourcePacks });
     if (gameDir !== baseGameDir && !gameInstances.get('main')?.runtime.child) {
       const baseOptions = path.join(baseGameDir, 'options.txt');
-      if (fs.existsSync(baseOptions))
-        atomic(
+      if (fs.existsSync(baseOptions)) {
+        const baseOptionFile = readGameOptions(baseOptions);
+        writeGameOptions(
           baseOptions,
-          updateResourcePackOptions(fs.readFileSync(baseOptions, 'utf8'), {
+          updateResourcePackOptions(baseOptionFile.text, {
             ...settings,
             activeResourcePacks,
           }),
+          baseOptionFile.encoding,
         );
+      }
     }
     if (win && !win.isDestroyed()) win.webContents.send('settings:updated', settings);
   } catch (error) {

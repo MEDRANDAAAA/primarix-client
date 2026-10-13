@@ -5,6 +5,7 @@ const os = require('node:os');
 const { spawn, execFile } = require('node:child_process');
 const runFile = require('node:util').promisify(execFile);
 const { hashFile, writeDownload } = require('./files.cjs');
+const { readGameOptions, writeGameOptions } = require('./game-options.cjs');
 const { unzipSync } = require('fflate');
 const FORGE_VERSION = '1.8.9-11.15.1.2318-1.8.9';
 const FORGE_URL = `https://maven.minecraftforge.net/net/minecraftforge/forge/${FORGE_VERSION}/forge-${FORGE_VERSION}-universal.jar`;
@@ -397,7 +398,8 @@ class Runtime {
         options,
         'guiScale:2\nmaxFps:240\nenableVsync:false\nrenderDistance:8\nfullscreen:false\nresourcePacks:[]\n',
       );
-    let optionText = await fsp.readFile(options, 'utf8');
+    const optionFile = readGameOptions(options);
+    let optionText = optionFile.text;
     optionText = updateResourcePackOptions(optionText, settings);
     optionText = optionText.replace(/^fullscreen:.*$/m, 'fullscreen:' + settings.fullscreen);
     for (const [k, v] of [
@@ -410,7 +412,7 @@ class Runtime {
       optionText = optionText.replace(/^pauseOnLostFocus:.*$/m, 'pauseOnLostFocus:false');
       if (!optionText.includes('pauseOnLostFocus:')) optionText += '\npauseOnLostFocus:false\n';
     }
-    await fsp.writeFile(options, optionText);
+    writeGameOptions(options, optionText, optionFile.encoding);
     const args = [
       `-Xmx${settings.memory}G`,
       '-Xms512M',
@@ -532,7 +534,10 @@ function updateResourcePackOptions(optionText, settings) {
   if (settings.pack) packs.push('Antagon Pack 8x.zip');
   packs = packs.filter((pack) => pack !== 'file/Primarix Glass');
   packs.push('file/Primarix Glass');
-  const line = 'resourcePacks:' + JSON.stringify(packs);
+  const serializedPacks = JSON.stringify(packs).replace(/[\u007f-\uffff]/g, (character) => {
+    return `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`;
+  });
+  const line = 'resourcePacks:' + serializedPacks;
   return /^resourcePacks:.*$/m.test(optionText)
     ? optionText.replace(/^resourcePacks:.*$/m, line)
     : optionText.trimEnd() + '\n' + line + '\n';
