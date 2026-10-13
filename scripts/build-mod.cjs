@@ -1,16 +1,23 @@
 const fs = require('node:fs');
-const os = require('node:os');
+const crypto = require('node:crypto');
 const path = require('node:path');
-const { execFileSync, spawnSync } = require('node:child_process');
-const { unzipSync } = require('fflate');
+const { execFileSync } = require('node:child_process');
+const { unzipSync, zipSync } = require('fflate');
 const { download } = require('../electron/runtime.cjs');
+
 const root = path.resolve(__dirname, '..');
 const build = path.join(root, 'build');
 const deps = path.join(build, 'deps');
 const classes = path.join(build, 'classes');
 const stubs = path.join(build, 'stubs');
 const source = path.join(root, 'mod-src');
+const baseCore = path.join(root, 'assets/client-core-0.1.70-base.bin');
+const modJar = path.join(root, 'assets/AnnthModCD-1.1.64.jar');
 const output = path.join(root, 'assets/client-core.bin');
+const BASE_SHA256 = '3ac6bc83106577b78d62080902383c52e282cd712370780173a1b202fcae3544';
+const MOD_SHA256 = '55b2600ba2dcd27be63b3cb1891f4615879f0e4ee3ed698c14539ce4a9e0da92';
+const MOD_CLASS_COUNT = 38;
+const HUD_COMPAT_CLASS = 'com/rpgclient/cooldown/GuiCooldownInventory.class';
 const DEPENDENCIES = [
   [
     'https://maven.minecraftforge.net/net/minecraftforge/forge/1.8.9-11.15.1.2318-1.8.9/forge-1.8.9-11.15.1.2318-1.8.9-universal.jar',
@@ -33,120 +40,16 @@ const DEPENDENCIES = [
     '4333508b8dd8ee72aa4e39afa713b3a74579b773',
   ],
 ];
-const MOD_INFO = [
-  {
-    modid: 'antagonhud',
-    name: 'Primarix Client',
-    version: '0.1.11',
-    mcversion: '1.8.9',
-    description: 'Cliente PvP con HUD configurable para Primarix Client.',
-    authorList: ['Annth'],
-    clientSideOnly: true,
-  },
-  {
-    modid: 'annthmodcd',
-    name: 'AnnthModCD',
-    version: '1.1.63',
-    mcversion: '1.8.9',
-    description: 'Módulo original de recargas, AutoH, Abs, herramientas y HUD.',
-    authorList: ['Annth'],
-    clientSideOnly: true,
-  },
-];
-const tool = (name) => (process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', name) : name);
-const run = (name, args) => execFileSync(tool(name), args, { stdio: 'inherit' });
-const javaFiles = (dir) =>
-  fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const file = path.join(dir, entry.name);
+const java = (name) => (process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', name) : name);
+const javaFiles = (directory) =>
+  fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const file = path.join(directory, entry.name);
     return entry.isDirectory() ? javaFiles(file) : entry.name.endsWith('.java') ? [file] : [];
   });
-const originalModSource = path.join(source, 'studio', 'com', 'rpgclient');
-const studioFiles = javaFiles(path.join(source, 'studio')).filter(
-  (file) => !file.startsWith(originalModSource + path.sep),
-);
-function findJava8() {
-  const roots = [
-    process.env.JAVA8_HOME,
-    process.env.JAVA_HOME_8,
-    process.env.JAVA_HOME,
-    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Java'),
-    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Eclipse Adoptium'),
-    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Zulu'),
-    path.join(os.homedir(), '.jdks'),
-  ].filter(Boolean);
-  const candidates = [];
-  for (const root of roots) {
-    if (fs.existsSync(path.join(root, 'bin', process.platform === 'win32' ? 'javac.exe' : 'javac'))) {
-      candidates.push(root);
-      continue;
-    }
-    if (fs.existsSync(root)) {
-      for (const name of fs.readdirSync(root)) {
-        if (/^(?:jdk(?:-1)?8|jdk1\.8|jdk-8|zulu-8)/i.test(name)) candidates.push(path.join(root, name));
-      }
-    }
-  }
-  for (const candidate of candidates) {
-    const javac = path.join(candidate, 'bin', process.platform === 'win32' ? 'javac.exe' : 'javac');
-    if (!fs.existsSync(javac)) continue;
-    const version = spawnSync(javac, ['-version'], { encoding: 'utf8' });
-    if (/1\.8|version 8/i.test(`${version.stdout || ''}${version.stderr || ''}`)) return candidate;
-  }
-  throw Error('Para integrar AnnthModCD hace falta un JDK 8. Define JAVA8_HOME con la ruta del JDK 8.');
-}
-function findGradle() {
-  const binary = process.platform === 'win32' ? 'gradle.bat' : 'gradle';
-  const candidates = [
-    process.env.GRADLE_HOME && path.join(process.env.GRADLE_HOME, 'bin', binary),
-    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Gradle', 'gradle-2.14.1', 'bin', 'gradle.bat'),
-    ...String(process.env.PATH || '')
-      .split(path.delimiter)
-      .map((directory) => path.join(directory, binary)),
-  ].filter(Boolean);
-  const gradle = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!gradle) throw Error('Para reobfuscar AnnthModCD hace falta Gradle 2.14.1. Define GRADLE_HOME con su carpeta.');
-  return gradle;
-}
-function buildOriginalMod() {
-  const projectDir = path.join(build, 'annthmodcd-forge');
-  fs.rmSync(projectDir, { recursive: true, force: true });
-  const javaSource = path.join(projectDir, 'src', 'main', 'java', 'com', 'rpgclient');
-  fs.mkdirSync(javaSource, { recursive: true });
-  fs.cpSync(originalModSource, javaSource, { recursive: true });
-  fs.cpSync(path.join(source, 'forge-build'), projectDir, { recursive: true });
-  const gradle = findGradle();
-  const javaHome = findJava8();
-  const gradleEnv = {
-    ...process.env,
-    JAVA_HOME: javaHome,
-    PATH: path.join(javaHome, 'bin') + path.delimiter + process.env.PATH,
-  };
-  const args = ['--no-daemon', 'reobfJar'];
-  if (process.platform === 'win32' && /\.(?:bat|cmd)$/i.test(gradle)) {
-    execFileSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `""${gradle}" ${args.join(' ')}"`], {
-      cwd: projectDir,
-      env: gradleEnv,
-      stdio: 'inherit',
-      windowsVerbatimArguments: true,
-    });
-  } else {
-    execFileSync(gradle, args, { cwd: projectDir, env: gradleEnv, stdio: 'inherit' });
-  }
-  const archive = path.join(projectDir, 'build', 'libs', 'AnnthModCD-1.1.63.jar');
-  if (!fs.existsSync(archive)) throw Error('ForgeGradle no generó el JAR original AnnthModCD 1.1.63.');
-  const entries = unzipSync(fs.readFileSync(archive));
-  let copied = 0;
-  for (const [name, content] of Object.entries(entries)) {
-    if (!name.startsWith('com/rpgclient/') || !name.endsWith('.class')) continue;
-    const target = path.join(classes, ...name.split('/'));
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, content);
-    copied++;
-  }
-  if (copied < 30 || !fs.existsSync(path.join(classes, 'com', 'rpgclient', 'CooldownMain.class')))
-    throw Error('El JAR original AnnthModCD no contiene todas sus clases reobfuscadas.');
-  console.log(`AnnthModCD 1.1.63 integrated from original source (${copied} classes).`);
-}
+const hash = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const isModClass = (name) => name.startsWith('com/rpgclient/') && name.endsWith('.class');
+const isStudioClass = (name) => name.startsWith('studio/antagon/') && name.endsWith('.class');
+
 async function main() {
   const classpath = [];
   for (const [url, sha1] of DEPENDENCIES) {
@@ -154,69 +57,107 @@ async function main() {
     await download(url, file, sha1);
     classpath.push(file);
   }
-  for (const dir of [classes, stubs]) fs.rmSync(dir, { recursive: true, force: true });
-  run('javac', [
-    '--release',
-    '8',
-    '-Xlint:-options',
-    '-encoding',
-    'UTF-8',
-    '-d',
-    stubs,
-    ...javaFiles(path.join(source, 'stubs')),
-  ]);
-  run('javac', [
-    '--release',
-    '8',
-    '-Xlint:-options',
-    '-encoding',
-    'UTF-8',
-    '-cp',
-    [...classpath, stubs].join(path.delimiter),
-    '-d',
-    classes,
-    ...studioFiles,
-  ]);
-  buildOriginalMod();
-  const resources = path.join(classes, 'assets/antagon');
-  fs.mkdirSync(resources, { recursive: true });
-  fs.cpSync(path.join(source, 'resources'), classes, { recursive: true });
-  const gifExtractor = path.join(build, 'gif-extractor');
-  fs.rmSync(gifExtractor, { recursive: true, force: true });
-  fs.mkdirSync(gifExtractor, { recursive: true });
-  run('javac', [
-    '--release',
-    '8',
-    '-encoding',
-    'UTF-8',
-    '-d',
-    gifExtractor,
-    path.join(__dirname, 'GifFrameExtractor.java'),
-  ]);
-  run('java', [
-    '-cp',
-    gifExtractor,
-    'GifFrameExtractor',
-    path.join(root, 'assets/menu-background.gif'),
-    path.join(resources, 'menu-frames'),
-  ]);
-  console.log('Animated Minecraft menu GIF extracted into Forge textures.');
-  const splashLogo = path.join(classes, 'assets/antagonhud/textures/gui/title/primarix.png');
-  fs.mkdirSync(path.dirname(splashLogo), { recursive: true });
-  fs.copyFileSync(path.join(root, 'assets/splash-primarix.png'), splashLogo);
-  fs.copyFileSync(
-    path.join(root, 'assets/primarix-mark.png'),
-    path.join(classes, 'assets/antagonhud/textures/gui/title/primarix-mark.png'),
+
+  for (const directory of [classes, stubs]) fs.rmSync(directory, { recursive: true, force: true });
+  execFileSync(
+    java('javac'),
+    [
+      '--release',
+      '8',
+      '-Xlint:-options',
+      '-encoding',
+      'UTF-8',
+      '-d',
+      stubs,
+      ...javaFiles(path.join(source, 'stubs')),
+    ],
+    { stdio: 'inherit' },
   );
-  fs.copyFileSync(path.join(root, 'assets/PixelifySans.ttf'), path.join(resources, 'PixelifySans.ttf'));
-  fs.copyFileSync(path.join(root, 'assets/PixelifySans-LICENSE.txt'), path.join(resources, 'FONT-LICENSE.txt'));
-  fs.writeFileSync(path.join(classes, 'mcmod.info'), JSON.stringify(MOD_INFO));
-  const manifest = path.join(build, 'MANIFEST.MF');
-  fs.writeFileSync(manifest, 'FMLCorePlugin: studio.antagon.core.AntagonCore\nFMLCorePluginContainsFMLMod: true\n');
-  run('jar', ['cfm', output, manifest, '-C', classes, '.']);
-  fs.rmSync(path.join(root, 'assets/antagon-hud-0.1.7.jar'), { force: true });
-  console.log('Primarix Client built:', path.relative(root, output));
+  const originalModSource = path.join(source, 'studio/com/rpgclient');
+  const studioFiles = javaFiles(path.join(source, 'studio')).filter(
+    (file) => !file.startsWith(originalModSource + path.sep),
+  );
+  studioFiles.push(
+    path.join(originalModSource, 'cooldown/CooldownVisuals.java'),
+    path.join(originalModSource, 'cooldown/HudBounds.java'),
+  );
+  execFileSync(
+    java('javac'),
+    [
+      '--release',
+      '8',
+      '-Xlint:-options',
+      '-encoding',
+      'UTF-8',
+      '-cp',
+      [...classpath, stubs].join(path.delimiter),
+      '-d',
+      classes,
+      ...studioFiles,
+    ],
+    { stdio: 'inherit' },
+  );
+
+  if (hash(baseCore) !== BASE_SHA256) throw Error('El core base v0.1.70 no coincide con el SHA-256 fijado.');
+  if (hash(modJar) !== MOD_SHA256) throw Error('El JAR AnnthModCD 1.1.64 no coincide con el SHA-256 fijado.');
+
+  const baseEntries = unzipSync(fs.readFileSync(baseCore));
+  const modEntries = unzipSync(fs.readFileSync(modJar));
+  const modClasses = Object.keys(modEntries).filter(isModClass);
+  const studioClasses = Object.keys(baseEntries).filter(isStudioClass);
+  if (modClasses.length !== MOD_CLASS_COUNT)
+    throw Error(`Se esperaban ${MOD_CLASS_COUNT} clases de AnnthModCD 1.1.64; se encontraron ${modClasses.length}.`);
+  if (studioClasses.length !== 23) throw Error(`El core base no contiene las 23 clases Primarix esperadas (${studioClasses.length}).`);
+
+  const modInfo = JSON.parse(Buffer.from(baseEntries['mcmod.info']).toString('utf8'));
+  const mod = modInfo.find((entry) => entry.modid === 'annthmodcd');
+  if (!mod || mod.version !== '1.1.63') throw Error('El core base no contiene AnnthModCD 1.1.63 como se esperaba.');
+  mod.version = '1.1.64';
+
+  if (!baseEntries[HUD_COMPAT_CLASS] || !modEntries[HUD_COMPAT_CLASS])
+    throw Error('Falta la clase HUD de compatibilidad requerida para conservar el ajuste de pantalla.');
+  const outputEntries = { ...baseEntries, 'mcmod.info': Buffer.from(JSON.stringify(modInfo)) };
+  for (const name of modClasses) {
+    if (name !== HUD_COMPAT_CLASS) outputEntries[name] = modEntries[name];
+  }
+  for (const helper of [
+    'com/rpgclient/cooldown/CooldownVisuals.class',
+    'com/rpgclient/cooldown/HudBounds.class',
+  ]) {
+    if (!baseEntries[helper]) throw Error(`El core base no conserva la clase auxiliar Primarix ${helper}.`);
+  }
+  for (const required of [
+    'com/rpgclient/CooldownMain.class',
+    'com/rpgclient/cooldown/GuiHealEditor.class',
+    'com/rpgclient/cooldown/HealProfile.class',
+    'com/rpgclient/cooldown/HealManager.class',
+  ]) {
+    if (!modEntries[required]) throw Error(`El JAR 1.1.64 no contiene ${required}.`);
+  }
+  if (!Buffer.from(modEntries['com/rpgclient/CooldownMain.class']).includes(Buffer.from('1.1.64')))
+    throw Error('La clase CooldownMain del JAR no declara AnnthModCD 1.1.64.');
+
+  for (const [name, content] of Object.entries(baseEntries)) {
+    if (name === 'mcmod.info' || isModClass(name)) continue;
+    const integrated = outputEntries[name];
+    if (!integrated || !Buffer.from(integrated).equals(Buffer.from(content)))
+      throw Error(`La integración alteró un recurso o una clase fuera de com/rpgclient: ${name}`);
+  }
+  for (const name of studioClasses) {
+    if (!Buffer.from(outputEntries[name]).equals(Buffer.from(baseEntries[name])))
+      throw Error(`La integración alteró una clase Primarix: ${name}`);
+  }
+  if (!Buffer.from(outputEntries[HUD_COMPAT_CLASS]).equals(Buffer.from(baseEntries[HUD_COMPAT_CLASS])))
+    throw Error('La integración alteró la variante del HUD que limita los paneles al tamaño de pantalla.');
+
+  const archive = zipSync(outputEntries, { level: 6 });
+  fs.writeFileSync(output, archive);
+  console.log(
+    `Primarix core built from pinned v0.1.70 base; AnnthModCD 1.1.64 overlay=${modClasses.length - 1}, ` +
+      `HUD bounds compatibility retained, studio/antagon preserved=${studioClasses.length}, SHA-256=${hash(output)}`,
+  );
 }
+
 main().catch((error) => {
   console.error(error.message);
   process.exitCode = 1;

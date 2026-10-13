@@ -78,7 +78,7 @@ Todos os módulos do HUD podem ser arrastados e redimensionados pelos quatro can
 
 ## Desenvolvimento
 
-Requisitos: Node.js 22+, JDK 17+ e Gradle 2.14.1 com JDK 8 para reobfuscar e integrar o código original do AnnthModCD. Os testes de interface e do jogo usam perfis isolados em `build/`, sem modificar seus mundos ou preferências.
+Requisitos: Node.js 22+ e JDK 17+. `npm run build:mod` integra as classes de AnnthModCD 1.1.64, verificadas por SHA-256, sobre o core v0.1.70 igualmente fixado, preservando as demais classes e recursos do cliente. Mantém a variante Primarix de `GuiCooldownInventory` para limitar os painéis do HUD à tela. Os testes de interface e do jogo usam perfis isolados em `build/`, sem modificar seus mundos ou preferências.
 
 ```sh
 npm install
@@ -93,7 +93,7 @@ npm start
 | `npm run test:java` | Testes de reflexão e limites do menu em diferentes resoluções |
 | `npm run test:discord` | Valida o Rich Presence com o Discord local aberto |
 | `npm run test:ui` | Abre o launcher com Playwright e percorre a interface |
-| `npm run test:game` | Abre o jogo, testa menu, editor e mods e salva screenshots |
+| `npm run test:game` | Compila o core fixado, abre um perfil isolado e testa menu, editor e mods |
 | `npm run package:mac` | Compila o mod e gera o `.app` em `release/` |
 | `npm run package:win` | Compila o mod e gera a versão Windows x64 em `release/` |
 | `npm run format` | Formata o código (Prettier) |

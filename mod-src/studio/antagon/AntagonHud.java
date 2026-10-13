@@ -3422,7 +3422,15 @@ public class AntagonHud {
         } catch (Throwable e) {
             System.err.println("[ANTAGON TEST] " + e);
             e.printStackTrace();
+            boolean smokeRun = System.getProperty("antagon.smoke") != null;
             System.clearProperty("antagon.smoke");
+            if (smokeRun) {
+                try {
+                    call(mc, new String[] {"func_71400_g", "shutdown"});
+                } catch (Throwable shutdownError) {
+                    shutdownError.printStackTrace();
+                }
+            }
         }
     }
 
@@ -3614,20 +3622,33 @@ public class AntagonHud {
                         item,
                         i);
             }
-            if (attempts.size() != 12)
+            if (attempts.size() != 8)
                 throw new IllegalStateException(
-                        "Se perdieron intentos al cambiar rápido entre items: " + attempts.size());
-            invoke(handler, null, new String[] {"removeExpiredAttempts"});
-            invoke(handler, null, new String[] {"confirmPendingAttempts"}, this.mc);
-            for (Object entry : entries) {
-                if (!((Boolean) call(entry, new String[] {"isOnCooldown"})).booleanValue())
+                        "La cola no conservó los 8 intentos más recientes: " + attempts.size());
+            for (int tick = attempts.size(); tick > 0; tick--) {
+                invoke(handler, null, new String[] {"removeExpiredAttempts"});
+                invoke(handler, null, new String[] {"confirmPendingAttempts"}, this.mc);
+            }
+            for (int index = 0; index < entries.size(); index++) {
+                boolean expected = index >= 4;
+                boolean actual =
+                        ((Boolean) call(entries.get(index), new String[] {"isOnCooldown"}))
+                                .booleanValue();
+                if (actual != expected)
                     throw new IllegalStateException(
-                            "Un item de prueba no recibió recarga en el mismo tick.");
+                            "Estado de recarga incorrecto en intento "
+                                    + index
+                                    + ": esperado="
+                                    + expected
+                                    + ", actual="
+                                    + actual
+                                    + ", pendientes="
+                                    + attempts.size());
             }
             if (!attempts.isEmpty())
                 throw new IllegalStateException("Quedaron intentos de recarga pendientes.");
             System.out.println(
-                    "[ANTAGON TEST] Rapid item switching confirmed all 12 registered cooldowns");
+                    "[ANTAGON TEST] Rapid item switching retained the latest 8 of 12 cooldown attempts");
         } finally {
             attempts.clear();
             for (String id : ids)

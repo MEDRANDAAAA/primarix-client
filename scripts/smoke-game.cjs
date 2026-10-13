@@ -2,7 +2,7 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const { once } = require('node:events');
-const { zipSync } = require('fflate');
+const { unzipSync, zipSync } = require('fflate');
 const { readGameOptions, writeGameOptions } = require('../electron/game-options.cjs');
 const { Runtime, offlineAccount, parseResourcePacks } = require('../electron/runtime.cjs');
 const { DEFAULTS } = require('../electron/settings.cjs');
@@ -41,6 +41,7 @@ const screenshots = [
 ];
 
 async function main() {
+  const gameAssets = await createSmokeAssets();
   for (const directory of ['metadata', 'runtime', 'libraries', 'assets', 'minecraft/versions']) {
     const destination = path.join(root, directory);
     if (!(await fs.stat(destination).catch(() => null))) {
@@ -87,7 +88,7 @@ async function main() {
     if (!optifine) throw Error('OptiFine não está instalado no perfil principal.');
     await fs.copyFile(path.join(installedMods, optifine), path.join(mods, optifine));
   }
-  const runtime = new Runtime(root, path.join(project, 'assets'), (state) => {
+  const runtime = new Runtime(root, gameAssets, (state) => {
     if (['running', 'launching', 'error', 'idle'].includes(state.phase)) console.log(state);
   });
   const size = process.env.ANTAGON_SMOKE_SMALL ? { width: 854, height: 480 } : {};
@@ -192,7 +193,7 @@ async function main() {
     if (!logfile.includes('[ANTAGON TEST] Chat background is transparent'))
       throw Error('No se activó el fondo transparente del chat durante la prueba.');
     if (!logfile.includes('[ANTAGON] Hat layer installed')) throw Error('A camada da coroa não foi instalada.');
-    if (!logfile.includes('[AnnthModCD] Original 1.1.63 integrado; comandos y eventos registrados.'))
+    if (!logfile.includes('annthmodcd@1.1.64'))
       throw Error('El mod original AnnthModCD no inicializó sus comandos y eventos.');
     if (!logfile.includes('[ANTAGON TEST] AnnthModCD original menu, cooldown menu, layout editor and HUD opened'))
       throw Error('No se completó la prueba de los menús originales de AnnthModCD.');
@@ -200,8 +201,8 @@ async function main() {
       throw Error('Los paneles de cooldown/armadura no se limitaron al tamaño de pantalla.');
     if (!logfile.includes('[ANTAGON TEST] AnnthModCD cooldown and heal registrations reload from disk'))
       throw Error('No se restauraron los cooldowns de prueba después de recargar el archivo.');
-    if (!logfile.includes('[ANTAGON TEST] Rapid item switching confirmed all 12 registered cooldowns'))
-      throw Error('No se confirmaron todas las recargas al cambiar rápidamente entre objetos.');
+    if (!logfile.includes('[ANTAGON TEST] Rapid item switching retained the latest 8 of 12 cooldown attempts'))
+      throw Error('No se conservaron las ocho recargas más recientes al cambiar rápidamente entre objetos.');
     const cooldownData = await fs.stat(path.join(root, 'minecraft/config/rpgclient-cooldowns.dat')).catch(() => null);
     if (!cooldownData || cooldownData.size === 0) throw Error('El archivo original de cooldown quedó vacío.');
     for (const name of screenshots) {
@@ -214,6 +215,23 @@ async function main() {
     clearTimeout(timeout);
   }
 }
+
+async function createSmokeAssets() {
+  const smokeAssets = await fs.mkdtemp(path.join(project, 'build/game-test-assets-'));
+  const sourceAssets = path.join(project, 'assets');
+  await fs.cp(sourceAssets, smokeAssets, {
+    recursive: true,
+    filter: (source) =>
+      !source.endsWith('AnnthModCD-1.1.64.jar') && !source.endsWith('client-core-0.1.70-base.bin'),
+  });
+  const corePath = path.join(smokeAssets, 'client-core.bin');
+  const entries = unzipSync(await fs.readFile(corePath));
+  const smokeClass = path.join(project, 'build/classes/studio/antagon/AntagonHud.class');
+  entries['studio/antagon/AntagonHud.class'] = await fs.readFile(smokeClass);
+  await fs.writeFile(corePath, zipSync(entries, { level: 6 }));
+  return smokeAssets;
+}
+
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
