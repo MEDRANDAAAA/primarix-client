@@ -9,6 +9,7 @@ const {
   systemPreferences,
   Tray,
   Menu,
+  screen,
 } = require('electron');
 const { unzipSync } = require('fflate');
 const fs = require('node:fs');
@@ -843,11 +844,14 @@ app
     loadAccount();
     startupTrace('account loaded');
     console.log('[PRIMARIX DEBUG] creating launcher window');
+    const { width: workWidth, height: workHeight } = screen.getPrimaryDisplay().workAreaSize;
+    const minWidth = Math.min(760, workWidth);
+    const minHeight = Math.min(560, workHeight);
     win = new BrowserWindow({
-      width: 1280,
-      height: 830,
-      minWidth: 1040,
-      minHeight: 720,
+      width: Math.max(minWidth, Math.min(1120, workWidth - 40)),
+      height: Math.max(minHeight, Math.min(760, workHeight - 40)),
+      minWidth,
+      minHeight,
       backgroundColor: '#151515',
       title: 'Primarix Client',
       icon: path.join(__dirname, '..', 'assets', 'icon.png'),

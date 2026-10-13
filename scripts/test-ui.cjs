@@ -382,7 +382,16 @@ const { createVoiceServer } = require('../backend/server.js');
       document.body.dataset.phase = 'idle';
     });
     await page.waitForFunction(() => document.querySelector('#map').dataset.animating === 'true');
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1040, 720));
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(800, 600));
+    await page.waitForFunction(() => window.innerWidth <= 800 && window.innerHeight <= 600);
+    const narrowLayout = await page.evaluate(() => ({
+      width: window.innerWidth,
+      pageWidth: document.documentElement.clientWidth,
+      headerWidth: document.querySelector('.topbar').clientWidth,
+      headerScrollWidth: document.querySelector('.topbar').scrollWidth,
+    }));
+    assert.equal(narrowLayout.width, narrowLayout.pageWidth);
+    assert.ok(narrowLayout.headerScrollWidth <= narrowLayout.headerWidth);
     await page.click('[data-view="settings"]');
     await page.locator('#discord-presence').scrollIntoViewIfNeeded();
     assert.equal(await page.locator('#discord-presence').isChecked(), false);

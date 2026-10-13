@@ -1590,6 +1590,73 @@ pre {
   }
 }
 
+@media (max-width: 850px) {
+  .topbar {
+    gap: 6px;
+    padding-right: 8px;
+  }
+  .brand {
+    gap: 5px;
+  }
+  .brand-mark {
+    width: 26px;
+    height: 26px;
+  }
+  .brand-wordmark {
+    font-size: 14px;
+  }
+  .brand-caption,
+  #profile-mode,
+  #profile-admin {
+    display: none;
+  }
+  nav {
+    flex: 1;
+    min-width: 0;
+    gap: 0;
+  }
+  .tab {
+    padding: 0 5px;
+    font-size: 11px;
+  }
+  .update-status,
+  .update {
+    max-width: 78px;
+    padding: 0 6px;
+    font-size: 10px;
+  }
+  .account {
+    gap: 4px;
+    padding: 4px;
+  }
+  #profile-name {
+    display: block;
+    max-width: 64px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .play-panel {
+    left: 16px;
+    right: 16px;
+    gap: 12px;
+    padding: 12px;
+  }
+  .version b {
+    font-size: 16px;
+  }
+  .play {
+    height: 42px;
+    padding: 0 18px;
+    font-size: 17px;
+  }
+  .hint {
+    left: 16px;
+    right: 16px;
+    font-size: 10px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -78,8 +78,16 @@ public final class CoreTest {
         check("100%".equals(ModuleRegistry.defaultValue("effects.width")));
         check("100%".equals(ModuleRegistry.defaultValue("effects.height")));
         check("compacto".equals(ModuleRegistry.defaultValue("effects.style")));
-        check("off".equals(ModuleRegistry.defaultValue("effects.name")));
-        check("off".equals(ModuleRegistry.defaultValue("effects.level")));
+        check("on".equals(ModuleRegistry.defaultValue("effects.name")));
+        check("on".equals(ModuleRegistry.defaultValue("effects.level")));
+        check("I".equals(EffectDisplay.level(-1)));
+        check("I".equals(EffectDisplay.level(0)));
+        check("III".equals(EffectDisplay.level(2)));
+        check("X".equals(EffectDisplay.level(9)));
+        check("11".equals(EffectDisplay.level(10)));
+        check(EffectDisplay.rowHeight(220, 10, 24) == 22f);
+        check(EffectDisplay.rowHeight(220, 20, 24) == 11f);
+        check(EffectDisplay.rowHeight(0, 10, 24) == 0);
         check("0:00".equals(EffectDisplay.duration(0)));
         check("0:01".equals(EffectDisplay.duration(1)));
         check("99:59".equals(EffectDisplay.duration(119980)));

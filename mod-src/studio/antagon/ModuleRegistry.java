@@ -140,8 +140,8 @@ final class ModuleRegistry {
                 {"width", "ANCHO", "range:50:200:5:%", "100%"},
                 {"height", "ALTO", "range:50:200:5:%", "100%"},
                 {"style", "VISTA", "compacto,detallado", "compacto"},
-                {"name", "NOMBRE", "on,off", "off"},
-                {"level", "NIVEL", "on,off", "off"},
+                {"name", "NOMBRE", "on,off", "on"},
+                {"level", "NIVEL", "on,off", "on"},
                 {"bg", "FONDO", "on,off"},
                 {"bar", "BARRA DE COLOR", "on,off"}
             };

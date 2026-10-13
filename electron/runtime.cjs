@@ -443,9 +443,9 @@ class Runtime {
       '--tweakClass',
       'net.minecraftforge.fml.common.launcher.FMLTweaker',
       '--width',
-      '1152',
+      '1024',
       '--height',
-      '720',
+      '640',
     ];
     if (PLATFORM === 'osx') args.unshift('-Xdock:name=Primarix Client');
     if (settings.fullscreen) args.push('--fullscreen');

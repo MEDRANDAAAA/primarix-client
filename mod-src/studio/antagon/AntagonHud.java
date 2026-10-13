@@ -240,7 +240,7 @@ public class AntagonHud {
         if (mod.equals("effects")
                 && (key.equals("name") || key.equals("level"))
                 && !config.containsKey(property)
-                && config.containsKey("effects.label")) {
+                && "on".equals(config.getProperty("effects.label"))) {
             return config.getProperty("effects.label");
         }
         return config.getProperty(property, defaultValue(property));
@@ -2607,7 +2607,7 @@ public class AntagonHud {
                         Object player = field(mc, "field_71439_g", "thePlayer");
                         Class<?> effectClass = Class.forName("net.minecraft.potion.PotionEffect");
                         Object shortEffect = null, cappedEffect = null;
-                        int[] potionIds = {17, 1, 5, 8, 11, 12};
+                        int[] potionIds = {17, 1, 5, 8, 11, 12, 14, 16, 18};
                         for (int i = 0; i < potionIds.length; i++) {
                             Object activeEffect =
                                     effectClass
@@ -2626,11 +2626,20 @@ public class AntagonHud {
                         if (icon < 0
                                 || icon >= 32
                                 || !duration.equals("2:00")
-                                || !cappedDuration.equals("99:99"))
+                                || !cappedDuration.equals("99:99")
+                                || ((Collection<?>)
+                                                        call(
+                                                                player,
+                                                                new String[] {
+                                                                    "func_70651_bq",
+                                                                    "getActivePotionEffects"
+                                                                }))
+                                                .size()
+                                        < potionIds.length)
                             throw new IllegalStateException(
-                                    "El icono o temporizador compacto de efectos no se pudo preparar.");
+                                    "No se pudo preparar la lista de efectos apilada.");
                         System.out.println(
-                                "[ANTAGON TEST] Six compact potion icons "
+                                "[ANTAGON TEST] Nine stacked potion effects with names, levels, and timers "
                                         + icon
                                         + " and 2:00/99:99 timers ready");
                     }
@@ -3799,51 +3808,57 @@ public class AntagonHud {
         Collection<?> effects = (Collection<?>) active;
         if (effects.isEmpty()) return;
 
-        int rows = Math.min(6, effects.size());
         boolean compact = opt("effects", "style").equals("compacto");
         boolean showName = flag("effects", "name"), showLevel = flag("effects", "level");
         boolean showLabels = showName || showLevel;
         float widthScale = percent("effects", "width"), heightScale = percent("effects", "height");
-        float baseWidth = compact ? (showLabels ? 148 : 62) : 184;
-        float minimumWidth =
-                showLabels ? (compact ? 100 : 96) : (compact ? 62 : 54);
+        float baseWidth = compact ? 154 : 184;
+        float minimumWidth = compact ? 112 : 132;
         float w = Math.max(minimumWidth, baseWidth * widthScale);
-        float rowHeight = Math.max(compact ? 10 : 9, (compact ? 20 : 16) * heightScale);
-        float h = compact ? rows * rowHeight + 6 : 21 + rows * rowHeight;
-        place("effects", w, h, sw - w - 12, 64, sw, sh);
+        float headerHeight = compact ? 0 : 14;
+        float availableHeight = Math.max(1, sh - 20 - headerHeight);
+        float rowHeight =
+                EffectDisplay.rowHeight(
+                        availableHeight,
+                        effects.size(),
+                        (compact ? 24 : 29) * heightScale);
+        float h = headerHeight + effects.size() * rowHeight + 4;
+        place("effects", w, h, sw - w - 12, 12, sw, sh);
         try {
             if (flag("effects", "bg")) rect(0, 0, w, h, 0xCE1E1E1E);
             if (flag("effects", "bar")) rect(0, 0, 2, h, RED);
-            if (!compact) text("EFECTOS", 7, 4, WHITE);
+            if (!compact) text("EFECTOS", 7, 3, WHITE);
             int row = 0;
             for (Object effect : effects) {
-                if (row >= rows) break;
                 int amplifier =
                         ((Number) call(effect, new String[] {"func_76458_c", "getAmplifier"})).intValue()
                                 + 1;
                 amplifier = Math.max(1, amplifier);
-                String level =
-                        amplifier <= 5
-                                ? new String[] {"I", "II", "III", "IV", "V"}[amplifier - 1]
-                                : Integer.toString(amplifier);
+                String level = EffectDisplay.level(amplifier - 1);
                 String label =
                         (showName ? potionName(effect) : "")
                                 + (showName && showLevel ? " " : "")
                                 + (showLevel ? level : "");
-                if (compact) {
-                    float rowTop = 3 + row * rowHeight;
-                    int iconSize = Math.min(18, Math.round(rowHeight));
-                    int iconY = Math.round(rowTop + (rowHeight - iconSize) / 2);
-                    int textY = Math.round(rowTop + (rowHeight - 8) / 2);
-                    drawPotionIcon(potionIconIndex(effect), 4, iconY, iconSize);
-                    if (showLabels) text(fit(label, w - 58), 26, textY, WHITE);
-                    String duration = potionDuration(effect);
-                    text(duration, w - width(duration) - 4, textY, GRAY);
-                } else {
-                    int y = Math.round(19 + row * rowHeight);
-                    if (showLabels) text(fit(label, w - 54), 7, y, WHITE);
-                    text(potionDuration(effect), w - 45, y, GRAY);
-                }
+                float rowTop = 2 + headerHeight + row * rowHeight;
+                float textScale = Math.min(1, rowHeight / 20f);
+                int iconSize = Math.max(1, Math.min(18, Math.round(rowHeight * .78f)));
+                int iconY = Math.round(rowTop + (rowHeight - iconSize) / 2);
+                drawPotionIcon(potionIconIndex(effect), 4, iconY, iconSize);
+                float textX = 26;
+                float textWidth = Math.max(1, (w - textX - 4) / textScale);
+                if (showLabels)
+                    scaledMenuText(
+                            fit(label, textWidth),
+                            textX,
+                            rowTop + Math.max(0, (rowHeight - 16 * textScale) / 2),
+                            WHITE,
+                            textScale);
+                scaledMenuText(
+                        potionDuration(effect),
+                        textX,
+                        rowTop + Math.max(0, (rowHeight - 16 * textScale) / 2) + 8 * textScale,
+                        GRAY,
+                        textScale);
                 row++;
             }
         } finally {
