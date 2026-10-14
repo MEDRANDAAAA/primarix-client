@@ -32,6 +32,36 @@ test('installs a valid ZIP in the isolated resourcepacks folder', async (t) => {
   assert.ok(installed['assets/minecraft/textures/blocks/test.png']);
 });
 
+test('imports and preserves a UTF-8 BOM resource pack', async (t) => {
+  const { source, destination } = await fixture(t);
+  const metadata = JSON.stringify({ pack: { pack_format: 1, description: 'Evelyn 16x' } });
+  fs.writeFileSync(
+    source,
+    zipSync({
+      ...packFiles(),
+      'pack.mcmeta': Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(metadata)]),
+    }),
+  );
+
+  const result = await importResourcePack(source, destination);
+  assert.equal(result.name, 'Evelyn 16x');
+  const installed = unzipSync(fs.readFileSync(result.path));
+  assert.equal(installed['pack.mcmeta'][0], 0xef);
+  assert.equal(installed['pack.mcmeta'][1], 0xbb);
+  assert.equal(installed['pack.mcmeta'][2], 0xbf);
+  assert.equal(
+    JSON.parse(
+      Buffer.from(installed['pack.mcmeta'])
+        .toString('utf8')
+        .replace(/^\uFEFF/, ''),
+    ).pack.description,
+    'Evelyn 16x',
+  );
+  const [listed] = await listInstalledResourcePacks(destination);
+  assert.equal(listed.valid, true);
+  assert.equal(listed.name, 'Evelyn 16x');
+});
+
 test('lists installed packages with metadata, icon and incompatible ZIPs', async (t) => {
   const { source, destination } = await fixture(t);
   fs.mkdirSync(destination, { recursive: true });
@@ -57,6 +87,24 @@ test('lists installed packages with metadata, icon and incompatible ZIPs', async
   const invalid = packs.find((pack) => pack.fileName === 'Invalid.zip');
   assert.equal(invalid.valid, false);
   assert.match(invalid.error, /pack_format 1/);
+});
+
+test('lists an installed resource pack whose metadata starts with a UTF-8 BOM', async (t) => {
+  const { destination } = await fixture(t);
+  const metadata = JSON.stringify({ pack: { pack_format: 1, description: 'Evelyn 16x' } });
+  fs.mkdirSync(destination, { recursive: true });
+  fs.writeFileSync(
+    path.join(destination, 'Evelyn 16x.zip'),
+    zipSync({
+      'pack.mcmeta': Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(metadata)]),
+      'assets/minecraft/test.txt': Buffer.from('ok'),
+    }),
+  );
+
+  const [pack] = await listInstalledResourcePacks(destination);
+  assert.equal(pack.valid, true);
+  assert.equal(pack.name, 'Evelyn 16x');
+  assert.equal(pack.error, '');
 });
 
 test('normalizes a package nested inside a folder and never overwrites an existing ZIP', async (t) => {

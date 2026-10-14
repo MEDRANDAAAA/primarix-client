@@ -132,6 +132,10 @@ function uniqueTarget(directory, name) {
   }
 }
 
+function parsePackMetadata(data) {
+  return JSON.parse(data.toString('utf8').replace(/^\uFEFF/, ''));
+}
+
 async function importResourcePack(source, destination) {
   const extension = path.extname(source).toLowerCase();
   if (extension === '.rar')
@@ -157,7 +161,7 @@ async function importResourcePack(source, destination) {
   const metadataPath = metadataFiles[0];
   let metadata;
   try {
-    metadata = JSON.parse(entries.get(metadataPath).toString('utf8'));
+    metadata = parsePackMetadata(entries.get(metadataPath));
   } catch {
     throw Error('El archivo pack.mcmeta no contiene JSON válido.');
   }
@@ -300,7 +304,7 @@ async function listInstalledResourcePacks(directory) {
     try {
       const { metadata: metadataBytes, icon } = await readInstalledPack(source);
       if (!metadataBytes) throw invalid('Falta pack.mcmeta en la raíz del ZIP.');
-      const metadata = JSON.parse(metadataBytes.toString('utf8'));
+      const metadata = parsePackMetadata(metadataBytes);
       if (!metadata?.pack || metadata.pack.pack_format !== 1)
         throw invalid('No es compatible con Minecraft 1.8.9 (pack_format 1).');
       pack.name = packDescription(metadata.pack.description).trim().slice(0, 120) || pack.name;
